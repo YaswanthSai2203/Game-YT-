@@ -52,9 +52,13 @@ export class ComboSystem {
   }
 
   break(): void {
+    const prev = this.combo;
     this.combo = 0;
     this.multiplier = 1;
     this.timer = 0;
+    if (prev > 1) {
+      this.events.emit('combo:break', { previousCombo: prev });
+    }
   }
 
   update(dt: number): void {

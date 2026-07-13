@@ -170,6 +170,7 @@ export type EventMap = {
   'player:phase': { active: boolean };
   'shard:collect': { value: number; combo: number };
   'combo:update': { combo: number; multiplier: number };
+  'combo:break': { previousCombo: number };
   'obstacle:hit': { type: string };
   'powerup:activate': { type: PowerupType };
   'powerup:expire': { type: PowerupType };
@@ -180,6 +181,7 @@ export type EventMap = {
   'settings:change': { settings: Partial<GameSettings> };
   'analytics:track': AnalyticsEvent;
   'ui:toast': { message: string; type?: string };
+  'ui:flash': { color?: string; duration?: number };
   'ui:tutorial': { step: number };
   'milestone:reach': { label: string };
 };
