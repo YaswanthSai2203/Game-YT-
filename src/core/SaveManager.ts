@@ -2,10 +2,12 @@ import type { SaveData, GameSettings, RunStats, LeaderboardEntry, WorldMemory } 
 import { STORAGE_KEY, GAME, LEADERBOARD_SIZE, SYNC, CREDITS } from '@/config/constants';
 import { getTodayDateString, getWeekId, hashString } from '@/utils/math';
 import { GridSyncSystem } from '@/systems/GridSyncSystem';
+import { computePlayerTitle } from '@/config/directorConfig';
 import { EventBus } from './EventBus';
 
 const LEGACY_STORAGE_KEY = 'neon-pulse-save-v1';
 const LEGACY_V2_KEY = 'neon-pulse-save-v2';
+const LEGACY_V3_KEY = 'neon-pulse-save-v3';
 
 function defaultWorldMemory(): WorldMemory {
   const hexIndex = hashString(navigator.userAgent + Date.now().toString()) % 16;
@@ -35,6 +37,12 @@ function defaultWorldMemory(): WorldMemory {
     watcherDefeated: false,
     aiCommentsHeard: 0,
     runsSinceAdaptation: 0,
+    playerTitle: 'Pilot',
+    gridMood: 'curious',
+    lastRunTheme: 'standard',
+    riskProfile: 0,
+    nearMissLifetime: 0,
+    ghostReplay: null,
   };
 }
 
@@ -112,6 +120,13 @@ function migrateSave(parsed: Partial<SaveData>): SaveData {
   if (merged.worldMemory.gridSync === undefined) merged.worldMemory.gridSync = 0;
   if (merged.worldMemory.gridSyncComplete === undefined) merged.worldMemory.gridSyncComplete = false;
   if (merged.worldMemory.earlyQuits === undefined) merged.worldMemory.earlyQuits = 0;
+  if (!merged.worldMemory.playerTitle) merged.worldMemory.playerTitle = 'Pilot';
+  if (!merged.worldMemory.gridMood) merged.worldMemory.gridMood = 'curious';
+  if (!merged.worldMemory.lastRunTheme) merged.worldMemory.lastRunTheme = 'standard';
+  if (merged.worldMemory.riskProfile === undefined) merged.worldMemory.riskProfile = 0;
+  if (merged.worldMemory.nearMissLifetime === undefined) merged.worldMemory.nearMissLifetime = 0;
+  if (merged.worldMemory.ghostReplay === undefined) merged.worldMemory.ghostReplay = null;
+  merged.worldMemory.playerTitle = computePlayerTitle(merged.worldMemory, merged.stats);
   return merged;
 }
 
@@ -150,6 +165,7 @@ export class SaveManager {
   load(): SaveData {
     try {
       let raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) raw = localStorage.getItem(LEGACY_V3_KEY);
       if (!raw) raw = localStorage.getItem(LEGACY_V2_KEY);
       if (!raw) {
         raw = localStorage.getItem(LEGACY_STORAGE_KEY);
@@ -277,6 +293,16 @@ export class SaveManager {
 
   markWatcherDefeated(): void {
     this.data.worldMemory.watcherDefeated = true;
+    this.persist();
+  }
+
+  saveGhostReplay(recording: import('@/types').GhostRecording): void {
+    this.data.worldMemory.ghostReplay = recording;
+    this.persist();
+  }
+
+  recordNearMissLifetime(): void {
+    this.data.worldMemory.nearMissLifetime++;
     this.persist();
   }
 

@@ -11,6 +11,7 @@ export class MythEventSystem {
   private fourthLaneTimer = 0;
   private mythMultiplierActive = false;
   private impossibleTriggered = false;
+  private directorMult = 1;
 
   constructor(events: EventBus, save: SaveManager, seed?: number) {
     this.events = events;
@@ -23,6 +24,11 @@ export class MythEventSystem {
     this.fourthLaneTimer = 0;
     this.mythMultiplierActive = false;
     this.impossibleTriggered = false;
+    this.directorMult = 1;
+  }
+
+  setDirectorMultiplier(mult: number): void {
+    this.directorMult = mult;
   }
 
   update(dt: number, timeAlive: number): void {
@@ -57,9 +63,9 @@ export class MythEventSystem {
 
   private getRollMultiplier(): number {
     const sync = this.save.save.worldMemory.gridSync;
-    if (sync >= GRID_SYNC.THRESHOLDS.IMPOSSIBLE) return 1.6;
-    if (sync >= GRID_SYNC.THRESHOLDS.GLITCHES) return 1.15;
-    return 1;
+    if (sync >= GRID_SYNC.THRESHOLDS.IMPOSSIBLE) return 1.6 * this.directorMult;
+    if (sync >= GRID_SYNC.THRESHOLDS.GLITCHES) return 1.15 * this.directorMult;
+    return this.directorMult;
   }
 
   private tryMythRoll(): void {

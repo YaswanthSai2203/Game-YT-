@@ -70,7 +70,22 @@ export interface AchievementDef {
   description: string;
   icon: string;
   condition: (stats: GameStats, run: RunStats) => boolean;
+  metaCondition?: (mem: WorldMemory, run: RunStats) => boolean;
   secret?: boolean;
+  /** Shown as ??? until unlocked */
+  mysterious?: boolean;
+}
+
+export interface GhostFrame {
+  t: number;
+  lane: number;
+}
+
+export interface GhostRecording {
+  mode: GameMode;
+  score: number;
+  duration: number;
+  frames: GhostFrame[];
 }
 
 export interface RunStats {
@@ -149,6 +164,13 @@ export interface WorldMemory {
   watcherDefeated: boolean;
   aiCommentsHeard: number;
   runsSinceAdaptation: number;
+  /** Earned title from playstyle — shown on menu/HUD */
+  playerTitle: string;
+  gridMood: string;
+  lastRunTheme: string;
+  riskProfile: number;
+  nearMissLifetime: number;
+  ghostReplay: GhostRecording | null;
 }
 
 export interface SaveData {
@@ -250,4 +272,9 @@ export type EventMap = {
   'grid:habit_broken': Record<string, never>;
   'grid:adaptive_unlock': Record<string, never>;
   'grid:dimension': { id: string };
+  'director:run_start': { theme: string; mood: string; label: string; subtitle: string };
+  'director:mood_shift': { mood: string };
+  'director:slowmo': { duration: number; scale: number };
+  'director:mercy_pulse': Record<string, never>;
+  'audio:mood': { mood: string };
 };
