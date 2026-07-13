@@ -17,9 +17,12 @@ import { FloatingTextSystem } from '@/systems/FloatingTextSystem';
 import {
   createPlayerCore, createFirewall, createShard,
   createPowerupIcon, createGridBackground, getCoreColor,
-  createBossFirewall, createGoldenShard, createGhostCore,
+  createBossFirewall, createGoldenShard, createGhostCore, createWhiteFirewall,
 } from '@/graphics/ProceduralAssets';
 import { QuantumRealitySystem } from '@/systems/QuantumRealitySystem';
+import { SentientAISystem } from '@/systems/SentientAISystem';
+import { MythEventSystem } from '@/systems/MythEventSystem';
+import { LivingWatcher } from '@/systems/LivingWatcher';
 import { clamp, easeOutCubic, circleRectOverlap, lerp } from '@/utils/math';
 
 interface ActivePowerup {
@@ -85,6 +88,11 @@ export class GameScene extends BaseScene {
   private comboHypeHit = new Set<number>();
   private challengeComplete = false;
   private runCredits = 0;
+  private sentient!: SentientAISystem;
+  private myth!: MythEventSystem;
+  private watcher: LivingWatcher | null = null;
+  private fourthLaneActive = false;
+  private gamePausedForEvent = false;
   private phaseCooldownBase: number = PLAYER.PHASE_COOLDOWN;
 
   private unsubscribers: (() => void)[] = [];
@@ -142,6 +150,8 @@ export class GameScene extends BaseScene {
       this.events.on('reality:rare', (d) => this.onRareEvent(d.type)),
       this.events.on('reality:rare_end', (d) => this.onRareEventEnd(d.type)),
       this.events.on('reality:assist', () => this.spawner?.queueAssistShard()),
+      this.events.on('myth:spawn_white', () => this.spawner?.spawnWhiteFirewall()),
+      this.events.on('world:impossible_crash', () => { void this.handleImpossibleCrash(); }),
     );
   }
 
@@ -201,6 +211,15 @@ export class GameScene extends BaseScene {
     this.combo = new ComboSystem(this.events);
     this.reality = new QuantumRealitySystem(this.events, seed);
     this.reality.reset();
+    this.reality.initAdaptive(this.save.save.worldMemory.adaptiveUnlocked);
+    this.sentient = new SentientAISystem(this.events, this.save);
+    this.sentient.reset();
+    this.myth = new MythEventSystem(this.events, this.save, seed);
+    this.myth.reset();
+
+    if (!this.save.save.worldMemory.watcherDefeated) {
+      this.watcher = new LivingWatcher(this.container, this.gameWidth, this.gameHeight);
+    }
 
     this.phaseCooldownBase = PLAYER.PHASE_COOLDOWN * this.upgrades.getPhaseCooldownFactor();
 
@@ -248,15 +267,18 @@ export class GameScene extends BaseScene {
     this.timeLimit = this.config.timeLimit ?? modeConf.timeLimit ?? 0;
 
     this.events.emit('game:start', { mode: this.config.mode });
+    this.sentient.onRunStart();
   }
 
   private moveLane(direction: number): void {
     if (this.gameOver || this.paused) return;
-    const newLane = clamp(this.playerTargetLane + direction, 0, LANES.COUNT - 1);
+    const maxLane = this.fourthLaneActive ? 3 : LANES.COUNT - 1;
+    const newLane = clamp(this.playerTargetLane + direction, 0, maxLane);
     if (newLane !== this.playerTargetLane) {
       this.playerTargetLane = newLane;
       this.laneSwitchProgress = 0;
       this.audio.playLaneSwitch();
+      this.sentient.onLaneMove(direction);
       if (!this.save.save.tutorialCompleted) {
         this.save.markTutorialComplete();
         this.events.emit('ui:tutorial', { step: -1 });
@@ -277,7 +299,7 @@ export class GameScene extends BaseScene {
   }
 
   override update(dt: number): void {
-    if (this.gameOver || this.paused || this.countdownActive) return;
+    if (this.gameOver || this.paused || this.countdownActive || this.gamePausedForEvent) return;
 
     const timeScale = this.activePowerups.some((p) => p.type === 'chronos')
       ? POWERUP.CHRONOS_FACTOR : 1;
@@ -293,9 +315,14 @@ export class GameScene extends BaseScene {
 
     this.updatePlayer(scaledDt);
     this.reality.update(dt, this.combo.getCombo(), this.score);
+    this.sentient.update(dt, this.combo.getCombo(), this.timeAlive, this.isNearDeath());
+    this.myth.update(dt, this.timeAlive);
+    this.sentient.onComboHigh(this.combo.getCombo());
+    this.reality.setPunishLanes(this.sentient.shouldPunishLeftHabit(), this.sentient.shouldPunishRightHabit());
+    this.fourthLaneActive = this.myth.isFourthLaneActive();
+    this.updateLaneLayout();
     this.spawner.setModifiers(this.reality.getModifiers());
     this.spawner.update(scaledDt, this.gameHeight);
-    this.updateLaneShift();
     this.updateGhostRival(scaledDt);
     this.combo.update(dt);
     this.particles.update(dt);
@@ -314,6 +341,16 @@ export class GameScene extends BaseScene {
 
     const intensity = this.spawner.getSpeedRatio();
     this.audio.setIntensity(intensity);
+    this.watcher?.update(dt, this.playerX, this.playerY);
+    if (this.combo.getCombo() >= 10) this.watcher?.onCombo(this.combo.getCombo());
+
+    if (this.timeAlive >= 120 && this.watcher && !this.save.save.worldMemory.watcherDefeated) {
+      this.save.markWatcherDefeated();
+      this.watcher.setDefeated();
+      this.watcher = null;
+    }
+
+    this.updateAudioLayers();
     this.audio.setRealityPitch(this.reality.getMusicPitch());
 
     if (!this.save.settings.reducedMotion) {
@@ -321,10 +358,46 @@ export class GameScene extends BaseScene {
     }
   }
 
-  private updateLaneShift(): void {
-    const base = [this.gameWidth * 0.2, this.gameWidth * 0.5, this.gameWidth * 0.8];
+  private updateLaneLayout(): void {
+    const ratios = this.fourthLaneActive
+      ? [0.12, 0.32, 0.55, 0.78]
+      : [0.2, 0.5, 0.8];
+    const base = ratios.map((r) => this.gameWidth * r);
     const shift = this.reality.getLaneShift(this.timeAlive);
-    this.laneCenters = base.map((x, i) => x + shift * (i === 1 ? 0.5 : i === 0 ? 1 : -1));
+    this.laneCenters = base.map((x, i) => {
+      const mult = i === 0 ? 1 : i === base.length - 1 ? -1 : 0.5;
+      return x + shift * mult;
+    });
+  }
+
+  private isNearDeath(): boolean {
+    return !this.hasShield && !this.phaseActive && this.spawner.getSpeedMultiplier() > 2;
+  }
+
+  private updateAudioLayers(): void {
+    if (this.isNearDeath()) {
+      this.events.emit('audio:layer', { layer: 'heartbeat', active: true });
+    } else if (this.combo.getCombo() >= 8) {
+      this.events.emit('audio:layer', { layer: 'choir', active: true });
+    } else if (this.reality.getActiveDimension()) {
+      this.events.emit('audio:layer', { layer: 'none', active: true });
+    } else {
+      this.events.emit('audio:layer', { layer: 'none', active: false });
+    }
+  }
+
+  private async handleImpossibleCrash(): Promise<void> {
+    this.gamePausedForEvent = true;
+    this.events.emit('ui:impossible_crash', {});
+    await new Promise((r) => setTimeout(r, 5500));
+    this.events.emit('ui:hype', {
+      title: 'JUST KIDDING',
+      subtitle: 'Welcome to the Null Zone',
+      tier: 5,
+      color: 'magenta',
+    });
+    this.reality.enterNullZone();
+    this.gamePausedForEvent = false;
   }
 
   private updateGhostRival(dt: number): void {
@@ -499,6 +572,9 @@ export class GameScene extends BaseScene {
           case 'powerup':
             graphic = createPowerupIcon(entity.powerupType ?? 'shield', 14);
             break;
+          case 'white_firewall':
+            graphic = createWhiteFirewall(entity.width, entity.height);
+            break;
           case 'vault':
             graphic = entity.isQuantumVault ? createGoldenShard(26) : createShard(22);
             graphic.alpha = entity.isQuantumVault ? 1 : 0.8;
@@ -548,7 +624,7 @@ export class GameScene extends BaseScene {
       const ex = this.laneCenters[entity.lane];
       const ey = entity.y;
 
-      if (entity.lane !== this.playerLane && entity.type !== 'shard' && entity.type !== 'vault') {
+      if (entity.lane !== this.playerLane && entity.type !== 'shard' && entity.type !== 'vault' && entity.type !== 'white_firewall') {
         if (entity.type === 'powerup') {
           const magnetActive = this.activePowerups.some((p) => p.type === 'magnet');
           if (!magnetActive) continue;
@@ -580,6 +656,12 @@ export class GameScene extends BaseScene {
           this.collectShard(entity.id, isQuantum ? SCORING.VAULT_BONUS * 2 : SCORING.VAULT_BONUS, true, isQuantum);
           break;
         }
+        case 'white_firewall':
+          this.spawner.removeEntity(entity.id);
+          this.addScore(200, this.playerX, this.playerY - 25);
+          this.popScore(this.playerX, this.playerY - 25, 200, COLORS.white);
+          this.particles.burst(this.playerX, this.playerY, COLORS.white, 20, 200);
+          break;
         case 'powerup':
           this.collectPowerup(entity.id, entity.powerupType!);
           break;
@@ -612,6 +694,7 @@ export class GameScene extends BaseScene {
         this.particles.burst(this.playerX, this.playerY - 20, COLORS.gold, 12, 180);
       } else {
         this.nearMissChecked.add(entity.id);
+        this.save.recordFirewallDodged();
       }
     }
   }
@@ -673,6 +756,8 @@ export class GameScene extends BaseScene {
       this.shakeAmount = 8;
       this.events.emit('ui:flash', { color: 'rgba(0,255,136,0.35)', duration: 200 });
       this.audio.playShieldBreak();
+      this.events.emit('audio:layer', { layer: 'piano', active: true });
+      setTimeout(() => this.events.emit('audio:layer', { layer: 'piano', active: false }), 2000);
       return;
     }
 
@@ -690,7 +775,9 @@ export class GameScene extends BaseScene {
     this.shards++;
     this.runCredits += 1;
     this.combo.hit();
-    const boosted = Math.floor(baseValue * this.upgrades.getShardMultiplier() * this.getShardValueMult());
+    const mythMult = this.myth.getShardMultiplier();
+    if (mythMult > 1) this.myth.consumeMythMultiplier();
+    const boosted = Math.floor(baseValue * this.upgrades.getShardMultiplier() * this.getShardValueMult() * mythMult);
     const points = Math.floor(boosted * this.combo.getMultiplier());
     this.addScore(points, this.laneCenters[this.playerLane], this.playerY - 30);
     this.reality.onShardCollect(this.combo.getCombo());
@@ -801,6 +888,18 @@ export class GameScene extends BaseScene {
     this.gameOver = true;
 
     if (fromDeath) {
+      this.save.recordDeath({
+        score: this.score,
+        shards: this.shards,
+        combo: this.combo.getCombo(),
+        maxCombo: this.combo.getMaxCombo(),
+        distance: this.distance,
+        timeAlive: this.timeAlive,
+        phaseShifts: this.phaseShifts,
+        powerups: this.powerupsCollected,
+        nearMisses: this.nearMisses,
+        mode: this.config.mode,
+      });
       this.audio.playHit();
       this.shakeAmount = 20;
       this.events.emit('ui:flash', { color: 'rgba(255,0,110,0.45)', duration: 350 });

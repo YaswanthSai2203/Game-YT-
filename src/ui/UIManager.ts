@@ -76,6 +76,11 @@ export class UIManager {
     this.events.on('reality:fracture', (d) => this.showFracturePortal(d));
     this.events.on('reality:rare', (d) => this.showRarePortal(d));
     this.events.on('reality:state', (d) => this.updateRealityFX(d));
+    this.events.on('ai:speak', (d) => this.showAIWhisper(d.text, d.tone));
+    this.events.on('ai:memory', (d) => this.showAIMemory(d.text));
+    this.events.on('community:hex_flash', (d) => this.flashHexFragment(d.fragment));
+    this.events.on('ui:impossible_crash', () => this.showImpossibleCrash());
+    this.events.on('audio:layer', (d) => this.audio.setEmotionalLayer(d.layer, d.active));
 
     this.events.on('settings:change', () => this.applyTheme());
   }
@@ -353,6 +358,77 @@ export class UIManager {
     }
   }
 
+  showAIWhisper(text: string, tone?: string): void {
+    let el = this.root.querySelector('#ai-whisper') as HTMLElement | null;
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'ai-whisper';
+      this.root.appendChild(el);
+    }
+    el.className = `ai-whisper ai-tone-${tone ?? 'whisper'}`;
+    el.textContent = text;
+    el.classList.add('visible');
+    setTimeout(() => el.classList.remove('visible'), 4000);
+  }
+
+  showAIMemory(text: string): void {
+    this.showAIWhisper(text, 'whisper');
+  }
+
+  flashHexFragment(fragment: string): void {
+    const el = document.createElement('div');
+    el.className = 'hex-flash';
+    el.textContent = fragment;
+    this.root.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('visible'));
+    setTimeout(() => el.remove(), 120);
+  }
+
+  showImpossibleCrash(): void {
+    const el = document.createElement('div');
+    el.className = 'impossible-crash';
+    el.innerHTML = `
+      <div class="crash-text">CONNECTION LOST...</div>
+      <div class="crash-sub">...</div>
+    `;
+    this.root.appendChild(el);
+    setTimeout(() => {
+      el.querySelector('.crash-sub')!.textContent = '...';
+    }, 2500);
+    setTimeout(() => el.remove(), 6000);
+  }
+
+  playFakeEnding(score: number): Promise<void> {
+    return new Promise((resolve) => {
+      const el = document.createElement('div');
+      el.className = 'fake-ending';
+      el.innerHTML = `
+        <div class="fake-ending-inner">
+          <h2>CONGRATULATIONS</h2>
+          <p>You escaped the simulation.</p>
+          <p class="fake-score">${formatScore(score)}</p>
+          <div class="fake-credits">
+            <p>NEON PULSE — A broken grid production</p>
+            <p>Core Operator: ${this.save.save.profile.name}</p>
+            <p>Thank you for syncing.</p>
+          </div>
+        </div>
+      `;
+      this.root.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('roll'));
+
+      setTimeout(() => {
+        el.classList.add('glitch-out');
+        el.innerHTML = `<div class="fake-ending-inner"><h2>SIMULATION RESTARTED</h2><p>The real run begins now.</p></div>`;
+        setTimeout(() => {
+          el.remove();
+          this.showHypeCallout({ title: 'NOT YET', subtitle: 'The grid is still watching', tier: 4, color: 'magenta' });
+          resolve();
+        }, 2200);
+      }, 4500);
+    });
+  }
+
   runCountdown(): Promise<void> {
     return new Promise((resolve) => {
       const steps = ['3', '2', '1', 'SYNC'];
@@ -442,16 +518,22 @@ export class UIManager {
 
   private renderMenu(): void {
     const save = this.save.save;
+    const stage = save.worldMemory.worldStage;
     const xpNext = SYNC.XP_PER_LEVEL[save.profile.syncLevel] ?? 99999;
     const xpPrev = SYNC.XP_PER_LEVEL[save.profile.syncLevel - 1] ?? 0;
     const xpProgress = ((save.profile.syncXP - xpPrev) / (xpNext - xpPrev)) * 100;
+    const title = stage >= 5 ? 'NEØN PULSÈ' : stage >= 2 ? 'NEON PULSЕ' : GAME.TITLE;
+    const corruptClass = stage >= 5 ? 'menu-corrupt' : stage >= 2 ? 'menu-glitch' : '';
 
-    this.overlay.className = 'screen screen-menu';
+    this.overlay.className = `screen screen-menu menu-stage-${stage}`;
     this.overlay.innerHTML = `
-      <div class="menu-content animate-in">
+      ${stage >= 1 ? '<div class="menu-cracks"></div>' : ''}
+      ${stage >= 3 && !save.worldMemory.watcherDefeated ? '<div class="menu-watcher" aria-hidden="true"></div>' : ''}
+      <div class="menu-content animate-in ${corruptClass}">
         <header class="menu-header">
-          <h1 class="menu-title">${GAME.TITLE}</h1>
-          <p class="menu-subtitle">${GAME.SUBTITLE}</p>
+          <h1 class="menu-title">${title}</h1>
+          <p class="menu-subtitle">${stage >= 4 ? 'QUANTUM RUN // SIMULATION ACTIVE' : GAME.SUBTITLE}</p>
+          ${save.worldMemory.aiTrust >= 20 ? `<p class="menu-ai-whisper">The grid remembers you.</p>` : ''}
         </header>
 
         <div class="mode-grid">
@@ -477,6 +559,7 @@ export class UIManager {
           <button class="btn btn-secondary" data-action="achievements" aria-label="Achievements">🏆 Achievements</button>
           <button class="btn btn-secondary" data-action="leaderboard" aria-label="Leaderboard">📊 Ranks</button>
           <button class="btn btn-secondary" data-action="settings" aria-label="Settings">⚙️ Settings</button>
+          ${stage >= 4 ? '<button class="btn btn-ghost menu-hidden-btn" data-action="void" aria-label="Hidden">???</button>' : ''}
         </nav>
 
         <div class="sync-bar">
@@ -509,6 +592,10 @@ export class UIManager {
         else if (action === 'leaderboard') this.showScreen('leaderboard');
         else if (action === 'daily') this.showScreen('daily');
         else if (action === 'upgrades') this.showScreen('upgrades');
+        else if (action === 'void') {
+          this.showToast('Not yet.', 'info');
+          this.showAIWhisper('You found something that is not ready.', 'glitch');
+        }
       });
       btn.addEventListener('mouseenter', () => this.audio.playMenuHover());
     });
@@ -675,6 +762,7 @@ export class UIManager {
         ${data.newHighScore ? '<div class="new-high-score">★ NEW HIGH SCORE ★</div>' : ''}
         ${unlocks.length > 0 ? `<div class="unlock-banner">${unlocks.map((u) => `<span>🔓 ${u} UNLOCKED</span>`).join('')}</div>` : ''}
         ${(data.realitiesDiscovered?.length ?? 0) > 0 ? `<div class="reality-discovered-banner"><span>🌀 REALITIES DISCOVERED</span>${data.realitiesDiscovered!.map((r) => `<span class="reality-tag">${r.replace(/_/g, ' ')}</span>`).join('')}</div>` : ''}
+        ${(this.save.save.worldMemory.mythsWitnessed.length > 0) ? `<div class="reality-discovered-banner myths-banner"><span>??? WITNESSED</span>${this.save.save.worldMemory.mythsWitnessed.map((m) => `<span class="reality-tag">${m.replace(/_/g, ' ')}</span>`).join('')}</div>` : ''}
         <div class="rank-badge">TOP ${rank}% · ${rankMsg}</div>
         <div class="stats-grid">
           <div class="stat-item"><span class="stat-label">SCORE</span><span class="stat-value">${formatScore(data.score)}</span></div>
@@ -1082,6 +1170,60 @@ export class UIManager {
         font-family: 'Orbitron', sans-serif; font-size: 0.8rem;
       }
       .reality-tag { font-size: 0.75rem; color: var(--color-neonCyan); text-transform: uppercase; }
+
+      .ai-whisper {
+        position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
+        max-width: 90%; padding: 10px 16px; border-radius: 8px;
+        font-family: 'Rajdhani', sans-serif; font-size: 0.95rem; text-align: center;
+        opacity: 0; transition: opacity 0.4s; pointer-events: none; z-index: 19;
+        background: rgba(10,14,26,0.85); border: 1px solid rgba(139,92,246,0.4);
+      }
+      .ai-whisper.visible { opacity: 1; }
+      .ai-tone-cold { color: var(--color-neonMagenta); border-color: rgba(255,0,110,0.4); }
+      .ai-tone-warm { color: var(--color-neonGreen); }
+      .ai-tone-glitch { color: var(--color-neonCyan); animation: glitchScan 0.2s steps(2) infinite; }
+
+      .hex-flash {
+        position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%);
+        font-family: 'Orbitron', monospace; font-size: 2rem; color: var(--color-neonGold);
+        opacity: 0; z-index: 30; pointer-events: none; text-shadow: 0 0 20px var(--color-neonGold);
+      }
+      .hex-flash.visible { opacity: 1; }
+
+      .impossible-crash {
+        position: absolute; inset: 0; background: #000; z-index: 50;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        color: #888; font-family: 'Orbitron', monospace;
+      }
+      .crash-text { font-size: 1.2rem; letter-spacing: 0.3em; }
+      .crash-sub { margin-top: 24px; font-size: 2rem; }
+
+      .fake-ending {
+        position: absolute; inset: 0; background: #000; z-index: 50;
+        display: flex; align-items: center; justify-content: center; color: #fff;
+        text-align: center; overflow: hidden;
+      }
+      .fake-ending.roll .fake-credits { animation: creditRoll 4s linear forwards; }
+      .fake-ending.glitch-out { animation: glitchScan 0.15s steps(3) infinite; }
+      .fake-ending h2 { font-family: 'Orbitron', sans-serif; color: var(--color-neonCyan); margin-bottom: 12px; }
+      .fake-score { font-family: 'Orbitron', sans-serif; font-size: 2rem; color: var(--color-neonGold); }
+      @keyframes creditRoll { from { transform: translateY(30vh); } to { transform: translateY(-120vh); } }
+
+      .menu-cracks {
+        position: absolute; inset: 0; pointer-events: none; opacity: 0.15;
+        background: linear-gradient(135deg, transparent 48%, rgba(255,255,255,0.3) 49%, transparent 51%);
+      }
+      .menu-watcher {
+        position: absolute; top: 12%; right: 8%; width: 60px; height: 60px;
+        border-radius: 50%; background: radial-gradient(circle, rgba(255,0,110,0.3), transparent);
+        animation: badgePulse 2s ease-in-out infinite; pointer-events: none;
+      }
+      .menu-ai-whisper { font-size: 0.75rem; color: var(--color-textSecondary); font-style: italic; margin-top: 4px; }
+      .menu-glitch .menu-title { animation: glitchScan 3s steps(2) infinite; }
+      .menu-corrupt .menu-title { color: var(--color-neonMagenta); letter-spacing: 0.15em; }
+      .menu-hidden-btn { opacity: 0.35; font-size: 0.75rem; }
+      .menu-stage-3 { filter: hue-rotate(5deg); }
+      .menu-stage-5 { filter: hue-rotate(12deg) saturate(1.2); }
 
       .animate-in { animation: fadeScaleIn 0.4s ease-out; }
       body.reduced-motion .animate-in { animation: none; }

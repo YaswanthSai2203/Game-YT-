@@ -247,7 +247,39 @@ export class AudioManager {
     this.musicOscs = [];
   }
 
+  private layerInterval: ReturnType<typeof setInterval> | null = null;
+  private currentLayer: string | null = null;
+
+  setEmotionalLayer(layer: 'heartbeat' | 'choir' | 'piano' | 'none', active: boolean): void {
+    if (!active || layer === 'none') {
+      if (this.layerInterval) {
+        clearInterval(this.layerInterval);
+        this.layerInterval = null;
+      }
+      this.currentLayer = null;
+      return;
+    }
+    if (this.currentLayer === layer) return;
+    this.currentLayer = layer;
+    if (this.layerInterval) clearInterval(this.layerInterval);
+
+    if (layer === 'heartbeat') {
+      this.layerInterval = setInterval(() => this.playTone(55, 0.08, 'sine', 0.12), 700);
+    } else if (layer === 'choir') {
+      this.layerInterval = setInterval(() => {
+        this.playTone(330, 0.2, 'sine', 0.06);
+        this.playTone(415, 0.2, 'sine', 0.05);
+        this.playTone(523, 0.2, 'sine', 0.05);
+      }, 900);
+    } else if (layer === 'piano') {
+      [262, 330, 392].forEach((f, i) => {
+        setTimeout(() => this.playTone(f, 0.5, 'triangle', 0.15), i * 180);
+      });
+    }
+  }
+
   destroy(): void {
+    if (this.layerInterval) clearInterval(this.layerInterval);
     this.stopMusic();
     this.ctx?.close();
     this.ctx = null;

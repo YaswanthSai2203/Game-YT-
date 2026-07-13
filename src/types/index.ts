@@ -122,6 +122,30 @@ export interface UpgradeLevels {
   coreShield: number;
 }
 
+export interface WorldMemory {
+  firewallsDodged: number;
+  longestRunSeconds: number;
+  laneMovesLeft: number;
+  laneMovesRight: number;
+  recentLaneLeft: number;
+  recentLaneRight: number;
+  lastDeathDate: string;
+  lastDeathSeconds: number;
+  lastDeathScore: number;
+  dimensionLastSeen: Record<string, string>;
+  mythsWitnessed: string[];
+  aiTrust: number;
+  worldStage: number;
+  communityHexIndex: number;
+  adaptiveUnlocked: boolean;
+  behaviorAdapted: boolean;
+  impossibleSeen: boolean;
+  fakeEndingSeen: boolean;
+  watcherDefeated: boolean;
+  aiCommentsHeard: number;
+  runsSinceAdaptation: number;
+}
+
 export interface SaveData {
   version: number;
   profile: PlayerProfile;
@@ -137,6 +161,7 @@ export interface SaveData {
   upgrades: UpgradeLevels;
   tutorialCompleted: boolean;
   lastDailyBonusDate: string;
+  worldMemory: WorldMemory;
 }
 
 export interface GameConfig {
@@ -206,4 +231,13 @@ export type EventMap = {
     fractureProgress: number;
   };
   'reality:assist': { subtle: boolean };
+  'ai:speak': { text: string; tone?: 'whisper' | 'cold' | 'warm' | 'glitch' };
+  'ai:memory': { text: string };
+  'myth:trigger': { id: string; silent?: boolean };
+  'world:impossible_crash': Record<string, never>;
+  'world:fake_ending': { score: number };
+  'audio:layer': { layer: 'heartbeat' | 'choir' | 'piano' | 'none'; active: boolean };
+  'community:hex_flash': { fragment: string; index: number };
+  'myth:spawn_white': Record<string, never>;
+  'ui:impossible_crash': Record<string, never>;
 };

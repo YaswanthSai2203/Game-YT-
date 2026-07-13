@@ -1,9 +1,38 @@
-import type { SaveData, GameSettings, RunStats, LeaderboardEntry } from '@/types';
+import type { SaveData, GameSettings, RunStats, LeaderboardEntry, WorldMemory } from '@/types';
 import { STORAGE_KEY, GAME, LEADERBOARD_SIZE, SYNC, CREDITS } from '@/config/constants';
 import { getTodayDateString, getWeekId, hashString } from '@/utils/math';
+import { SentientAISystem } from '@/systems/SentientAISystem';
 import { EventBus } from './EventBus';
 
 const LEGACY_STORAGE_KEY = 'neon-pulse-save-v1';
+const LEGACY_V2_KEY = 'neon-pulse-save-v2';
+
+function defaultWorldMemory(): WorldMemory {
+  const hexIndex = hashString(navigator.userAgent + Date.now().toString()) % 16;
+  return {
+    firewallsDodged: 0,
+    longestRunSeconds: 0,
+    laneMovesLeft: 0,
+    laneMovesRight: 0,
+    recentLaneLeft: 0,
+    recentLaneRight: 0,
+    lastDeathDate: '',
+    lastDeathSeconds: 0,
+    lastDeathScore: 0,
+    dimensionLastSeen: {},
+    mythsWitnessed: [],
+    aiTrust: 0,
+    worldStage: 0,
+    communityHexIndex: hexIndex,
+    adaptiveUnlocked: false,
+    behaviorAdapted: false,
+    impossibleSeen: false,
+    fakeEndingSeen: false,
+    watcherDefeated: false,
+    aiCommentsHeard: 0,
+    runsSinceAdaptation: 0,
+  };
+}
 
 function defaultSave(): SaveData {
   const today = getTodayDateString();
@@ -58,12 +87,13 @@ function defaultSave(): SaveData {
     upgrades: { shardBoost: 0, phaseSync: 0, magnetField: 0, coreShield: 0 },
     tutorialCompleted: false,
     lastDailyBonusDate: '',
+    worldMemory: defaultWorldMemory(),
   };
 }
 
 function migrateSave(parsed: Partial<SaveData>): SaveData {
   const base = defaultSave();
-  return {
+  const merged = {
     ...base,
     ...parsed,
     version: GAME.SAVE_VERSION,
@@ -71,7 +101,10 @@ function migrateSave(parsed: Partial<SaveData>): SaveData {
     upgrades: parsed.upgrades ?? base.upgrades,
     tutorialCompleted: parsed.tutorialCompleted ?? false,
     lastDailyBonusDate: parsed.lastDailyBonusDate ?? '',
+    worldMemory: { ...defaultWorldMemory(), ...parsed.worldMemory },
   };
+  merged.worldMemory.worldStage = SentientAISystem.computeWorldStage(merged.stats.totalRuns);
+  return merged;
 }
 
 /** Estimate local rank percentile from score (for motivational game-over UI) */
@@ -109,6 +142,7 @@ export class SaveManager {
   load(): SaveData {
     try {
       let raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) raw = localStorage.getItem(LEGACY_V2_KEY);
       if (!raw) {
         raw = localStorage.getItem(LEGACY_STORAGE_KEY);
       }
@@ -117,7 +151,7 @@ export class SaveManager {
         if (parsed.version === GAME.SAVE_VERSION) {
           return migrateSave(parsed);
         }
-        if (parsed.version === 1 || !parsed.version) {
+        if (parsed.version === 1 || parsed.version === 2 || !parsed.version) {
           return migrateSave(parsed);
         }
       }
@@ -189,6 +223,55 @@ export class SaveManager {
     this.persist();
   }
 
+  recordLaneMove(direction: number): void {
+    const m = this.data.worldMemory;
+    if (direction < 0) {
+      m.laneMovesLeft++;
+      m.recentLaneLeft++;
+    } else if (direction > 0) {
+      m.laneMovesRight++;
+      m.recentLaneRight++;
+    }
+    const recentTotal = m.recentLaneLeft + m.recentLaneRight;
+    if (recentTotal > 40) {
+      m.recentLaneLeft = Math.floor(m.recentLaneLeft * 0.5);
+      m.recentLaneRight = Math.floor(m.recentLaneRight * 0.5);
+    }
+    this.persist();
+  }
+
+  recordFirewallDodged(): void {
+    this.data.worldMemory.firewallsDodged++;
+    this.persist();
+  }
+
+  recordDimensionSeen(dimensionId: string): void {
+    this.data.worldMemory.dimensionLastSeen[dimensionId] = new Date().toISOString();
+    this.persist();
+  }
+
+  recordDeath(stats: RunStats): void {
+    const m = this.data.worldMemory;
+    m.lastDeathDate = new Date().toISOString();
+    m.lastDeathSeconds = stats.timeAlive;
+    m.lastDeathScore = stats.score;
+    if (stats.timeAlive > m.longestRunSeconds) {
+      m.longestRunSeconds = stats.timeAlive;
+    }
+    m.worldStage = SentientAISystem.computeWorldStage(this.data.stats.totalRuns + 1);
+    this.persist();
+  }
+
+  markFakeEndingSeen(): void {
+    this.data.worldMemory.fakeEndingSeen = true;
+    this.persist();
+  }
+
+  markWatcherDefeated(): void {
+    this.data.worldMemory.watcherDefeated = true;
+    this.persist();
+  }
+
   recordRun(stats: RunStats): { newHighScore: boolean; xpGained: number; creditsEarned: number; syncUnlocks: string[] } {
     this.data.stats.totalRuns++;
     this.data.stats.totalShards += stats.shards;
@@ -249,6 +332,11 @@ export class SaveManager {
 
     const creditsEarned = stats.creditsEarned ?? stats.shards * CREDITS.PER_SHARD;
     this.data.dataCredits += creditsEarned;
+
+    this.data.worldMemory.worldStage = SentientAISystem.computeWorldStage(this.data.stats.totalRuns);
+    if (stats.timeAlive > this.data.worldMemory.longestRunSeconds) {
+      this.data.worldMemory.longestRunSeconds = stats.timeAlive;
+    }
 
     this.persist();
     return { newHighScore, xpGained, creditsEarned, syncUnlocks };

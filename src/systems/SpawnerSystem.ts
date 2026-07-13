@@ -3,7 +3,7 @@ import type { RealityModifiers } from '@/systems/QuantumRealitySystem';
 import { DIFFICULTY, POWERUP, SCROLL } from '@/config/constants';
 import { createRng, randomInt, lerp, smoothstep } from '@/utils/math';
 
-export type SpawnEntityType = 'firewall' | 'shard' | 'powerup' | 'vault';
+export type SpawnEntityType = 'firewall' | 'shard' | 'powerup' | 'vault' | 'white_firewall';
 
 export interface SpawnedEntity {
   id: number;
@@ -132,6 +132,11 @@ export class SpawnerSystem {
     this.spawnEntity('vault', lane, { isQuantumVault: true, height: 52, width: 36 });
   }
 
+  spawnWhiteFirewall(lane?: number): void {
+    const l = lane ?? randomInt(0, 2);
+    this.spawnEntity('white_firewall', l, { width: 80, height: 28 });
+  }
+
   private spawnPattern(): void {
     if (this.elapsed < 20) {
       this.spawnWarmupPattern();
@@ -145,6 +150,12 @@ export class SpawnerSystem {
       this.spawnEntity('shard', randomInt(0, 2));
       if (this.rng() < 0.4) this.spawnEntity('shard', randomInt(0, 2));
       return;
+    }
+
+    if (this.modifiers?.punishLeftLane && this.rng() < 0.5) {
+      this.spawnEntity('firewall', 0);
+    } else if (this.modifiers?.punishRightLane && this.rng() < 0.5) {
+      this.spawnEntity('firewall', 2);
     }
 
     switch (patternLevel) {
@@ -282,6 +293,11 @@ export class SpawnerSystem {
 
     if (type === 'powerup') {
       entity.powerupType = powerupTypes[randomInt(0, powerupTypes.length - 1)];
+    }
+
+    if (type === 'white_firewall') {
+      entity.width = opts?.width ?? 80;
+      entity.height = opts?.height ?? 28;
     }
 
     this.entities.push(entity);

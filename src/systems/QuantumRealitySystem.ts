@@ -16,6 +16,8 @@ export interface RealityModifiers {
   shiftingLanes: boolean;
   titanBoss: boolean;
   goldenStorm: boolean;
+  punishLeftLane: boolean;
+  punishRightLane: boolean;
 }
 
 export interface ActiveFracture {
@@ -40,6 +42,8 @@ const DEFAULT_MODIFIERS: RealityModifiers = {
   shiftingLanes: false,
   titanBoss: false,
   goldenStorm: false,
+  punishLeftLane: false,
+  punishRightLane: false,
 };
 
 export class QuantumRealitySystem {
@@ -63,10 +67,24 @@ export class QuantumRealitySystem {
   private shardsPerMinute = 0;
   private shardTimestamps: number[] = [];
 
+  private adaptiveUnlocked = false;
+
   constructor(events: EventBus, seed?: number) {
     this.events = events;
     this.rng = seed !== undefined ? createRng(seed + 7919) : Math.random;
   }
+
+  initAdaptive(unlocked: boolean): void {
+    this.adaptiveUnlocked = unlocked;
+  }
+
+  setPunishLanes(left: boolean, right: boolean): void {
+    this.punishLeft = left;
+    this.punishRight = right;
+  }
+
+  private punishLeft = false;
+  private punishRight = false;
 
   reset(): void {
     this.flowMeter = 0;
@@ -175,6 +193,9 @@ export class QuantumRealitySystem {
       this.applyRuleMods(mods, rule);
     }
 
+    if (this.punishLeft) mods.punishLeftLane = true;
+    if (this.punishRight) mods.punishRightLane = true;
+
     if (this.activeRare?.type === 'golden_storm') {
       mods.goldenStorm = true;
       mods.shardValueMult = 3;
@@ -245,6 +266,15 @@ export class QuantumRealitySystem {
         mods.vaultChance = 0.12;
         mods.shardEchoChance = 0.2;
         break;
+      case 'adaptive_protocol':
+        mods.shiftingLanes = true;
+        mods.shardEchoChance = 0.3;
+        break;
+      case 'null_zone':
+        mods.scrollMult = 0.55;
+        mods.shardValueMult = 2;
+        mods.reverseFlow = true;
+        break;
     }
   }
 
@@ -262,11 +292,22 @@ export class QuantumRealitySystem {
     if (!ready && !forced) return;
     if (!forced && this.rng() > 0.035) return;
 
-    const pool = REALITY_DIMENSIONS.filter((d) => !this.usedDimensionIds.has(d.id));
+    const pool = REALITY_DIMENSIONS.filter((d) => {
+      if (d.id === 'adaptive_protocol' && !this.adaptiveUnlocked) return false;
+      if (d.id === 'null_zone') return false;
+      return !this.usedDimensionIds.has(d.id);
+    });
     const choices = pool.length > 0 ? pool : REALITY_DIMENSIONS;
     const dimension = choices[Math.floor(this.rng() * choices.length)];
 
     this.startFracture(dimension);
+  }
+
+  enterNullZone(): void {
+    const dim = REALITY_DIMENSIONS.find((d) => d.id === 'null_zone');
+    if (dim && !this.activeFracture) {
+      this.startFracture(dim);
+    }
   }
 
   private startFracture(dimension: RealityDimensionDef): void {
