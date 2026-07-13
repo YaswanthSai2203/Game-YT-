@@ -73,6 +73,9 @@ export class UIManager {
     this.events.on('score:change', (d) => {
       if (d.delta >= 50) this.punchScore(d.delta);
     });
+    this.events.on('reality:fracture', (d) => this.showFracturePortal(d));
+    this.events.on('reality:rare', (d) => this.showRarePortal(d));
+    this.events.on('reality:state', (d) => this.updateRealityFX(d));
 
     this.events.on('settings:change', () => this.applyTheme());
   }
@@ -256,6 +259,73 @@ export class UIManager {
       el.classList.remove('visible');
       setTimeout(() => el.remove(), 450);
     }, 900 + tier * 180);
+  }
+
+  private showFracturePortal(data: { dimension: string; subtitle: string; tint: string }): void {
+    if (this.save.settings.reducedMotion) return;
+    const portal = document.createElement('div');
+    portal.className = 'reality-portal';
+    portal.style.background = `radial-gradient(circle, ${data.tint}, transparent 70%)`;
+    portal.innerHTML = `
+      <div class="portal-ring"></div>
+      <div class="portal-text">
+        <span class="portal-label">REALITY FRACTURE</span>
+        <span class="portal-dimension">${data.dimension}</span>
+        <span class="portal-sub">${data.subtitle}</span>
+      </div>
+    `;
+    this.root.appendChild(portal);
+    requestAnimationFrame(() => portal.classList.add('open'));
+    setTimeout(() => {
+      portal.classList.remove('open');
+      setTimeout(() => portal.remove(), 600);
+    }, 2200);
+  }
+
+  private showRarePortal(data: { name: string; subtitle: string }): void {
+    if (this.save.settings.reducedMotion) return;
+    const portal = document.createElement('div');
+    portal.className = 'reality-portal reality-portal-rare';
+    portal.innerHTML = `
+      <div class="portal-ring portal-ring-gold"></div>
+      <div class="portal-text">
+        <span class="portal-label">ULTRA-RARE EVENT</span>
+        <span class="portal-dimension">${data.name}</span>
+        <span class="portal-sub">${data.subtitle}</span>
+      </div>
+    `;
+    this.root.appendChild(portal);
+    requestAnimationFrame(() => portal.classList.add('open'));
+    setTimeout(() => {
+      portal.classList.remove('open');
+      setTimeout(() => portal.remove(), 600);
+    }, 2800);
+  }
+
+  private updateRealityFX(state: {
+    flow: number;
+    glitch: number;
+    dimension: string | null;
+    rare: string | null;
+  }): void {
+    const glitchEl = this.overlay.querySelector('#reality-glitch') as HTMLElement | null;
+    const badge = this.overlay.querySelector('#reality-badge') as HTMLElement | null;
+    if (glitchEl && !this.save.settings.reducedMotion) {
+      glitchEl.style.opacity = String(Math.min(0.85, state.glitch * 0.7));
+      glitchEl.classList.toggle('active', state.glitch > 0.35);
+    }
+    if (badge) {
+      const label = state.rare
+        ? state.rare.replace(/_/g, ' ').toUpperCase()
+        : state.dimension;
+      if (label) {
+        badge.textContent = label;
+        badge.classList.remove('hidden');
+        badge.classList.toggle('rare', !!state.rare);
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
   }
 
   private punchScore(delta: number): void {
@@ -448,6 +518,8 @@ export class UIManager {
     this.overlay.className = 'screen screen-hud';
     this.overlay.innerHTML = `
       <div id="hype-vignette" class="hype-vignette"></div>
+      <div id="reality-glitch" class="reality-glitch"></div>
+      <div id="reality-badge" class="reality-badge hidden">REALITY</div>
       <div class="hud-top">
         <div class="hud-score-group">
           <span class="hud-label">SCORE</span>
@@ -602,6 +674,7 @@ export class UIManager {
         <h2 class="modal-title">${data.score > 0 ? 'RUN COMPLETE' : 'SYSTEM FAILURE'}</h2>
         ${data.newHighScore ? '<div class="new-high-score">★ NEW HIGH SCORE ★</div>' : ''}
         ${unlocks.length > 0 ? `<div class="unlock-banner">${unlocks.map((u) => `<span>🔓 ${u} UNLOCKED</span>`).join('')}</div>` : ''}
+        ${(data.realitiesDiscovered?.length ?? 0) > 0 ? `<div class="reality-discovered-banner"><span>🌀 REALITIES DISCOVERED</span>${data.realitiesDiscovered!.map((r) => `<span class="reality-tag">${r.replace(/_/g, ' ')}</span>`).join('')}</div>` : ''}
         <div class="rank-badge">TOP ${rank}% · ${rankMsg}</div>
         <div class="stats-grid">
           <div class="stat-item"><span class="stat-label">SCORE</span><span class="stat-value">${formatScore(data.score)}</span></div>
@@ -953,6 +1026,62 @@ export class UIManager {
         0% { transform: translateY(0) rotate(0deg); opacity: 1; }
         100% { transform: translateY(110vh) rotate(720deg); opacity: 0.3; }
       }
+
+      .reality-glitch {
+        position: absolute; inset: 0; pointer-events: none; z-index: 12; opacity: 0;
+        background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,240,255,0.03) 2px, rgba(0,240,255,0.03) 4px);
+        mix-blend-mode: screen;
+      }
+      .reality-glitch.active { animation: glitchScan 0.12s steps(2) infinite; }
+      body.reduced-motion .reality-glitch.active { animation: none; opacity: 0.2; }
+      @keyframes glitchScan {
+        0% { transform: translate(0, 0); filter: hue-rotate(0deg); }
+        50% { transform: translate(-3px, 2px); filter: hue-rotate(25deg); }
+        100% { transform: translate(2px, -2px); filter: hue-rotate(-15deg); }
+      }
+
+      .reality-badge {
+        position: absolute; top: calc(env(safe-area-inset-top, 8px) + 48px); left: 50%;
+        transform: translateX(-50%);
+        font-family: 'Orbitron', sans-serif; font-size: 0.55rem; letter-spacing: 0.2em;
+        padding: 4px 12px; border-radius: 4px;
+        background: rgba(139,92,246,0.25); border: 1px solid var(--color-neonViolet);
+        color: var(--color-neonViolet); pointer-events: none; z-index: 11;
+        animation: badgePulse 1.5s ease-in-out infinite;
+      }
+      .reality-badge.hidden { display: none; }
+      .reality-badge.rare {
+        background: rgba(255,215,0,0.2); border-color: var(--color-neonGold); color: var(--color-neonGold);
+      }
+      @keyframes badgePulse { 0%, 100% { opacity: 0.85; } 50% { opacity: 1; } }
+
+      .reality-portal {
+        position: absolute; inset: 0; z-index: 22; pointer-events: none;
+        display: flex; align-items: center; justify-content: center;
+        opacity: 0; transition: opacity 0.4s;
+      }
+      .reality-portal.open { opacity: 1; }
+      .portal-ring {
+        position: absolute; width: 40vmin; height: 40vmin; border-radius: 50%;
+        border: 3px solid var(--color-neonMagenta);
+        box-shadow: 0 0 60px var(--color-neonMagenta), inset 0 0 40px rgba(255,0,110,0.3);
+        animation: portalSpin 2s linear infinite;
+      }
+      .portal-ring-gold { border-color: var(--color-neonGold); box-shadow: 0 0 80px var(--color-neonGold); }
+      @keyframes portalSpin { from { transform: scale(0.2) rotate(0deg); } to { transform: scale(1.8) rotate(360deg); opacity: 0; } }
+      .portal-text { text-align: center; z-index: 1; animation: portalTextIn 0.6s ease-out; }
+      .portal-label { display: block; font-size: 0.7rem; letter-spacing: 0.3em; color: var(--color-textSecondary); }
+      .portal-dimension { display: block; font-family: 'Orbitron', sans-serif; font-size: 1.8rem; font-weight: 900; color: var(--color-neonCyan); margin: 8px 0; text-shadow: 0 0 30px var(--color-neonCyan); }
+      .portal-sub { display: block; font-size: 0.85rem; color: var(--color-textSecondary); max-width: 280px; margin: 0 auto; }
+      @keyframes portalTextIn { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: scale(1); } }
+
+      .reality-discovered-banner {
+        display: flex; flex-direction: column; gap: 6px; margin: 12px 0;
+        padding: 10px; border: 1px solid var(--color-neonCyan); border-radius: 8px;
+        background: rgba(0,240,255,0.08); text-align: center;
+        font-family: 'Orbitron', sans-serif; font-size: 0.8rem;
+      }
+      .reality-tag { font-size: 0.75rem; color: var(--color-neonCyan); text-transform: uppercase; }
 
       .animate-in { animation: fadeScaleIn 0.4s ease-out; }
       body.reduced-motion .animate-in { animation: none; }

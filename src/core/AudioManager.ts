@@ -7,6 +7,7 @@ export class AudioManager {
   private masterGain: GainNode | null = null;
   private sfxGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
+  private realityPitch = 1;
   private musicOscs: OscillatorNode[] = [];
   private musicInterval: ReturnType<typeof setInterval> | null = null;
   private musicPlaying = false;
@@ -168,6 +169,25 @@ export class AudioManager {
     setTimeout(() => this.playNoise(0.2, 0.15), 400);
   }
 
+  setRealityPitch(pitch: number): void {
+    this.realityPitch = pitch;
+    if (this.musicPlaying) this.restartMusicTicker();
+  }
+
+  playFracture(): void {
+    this.playNoise(0.35, 0.2);
+    [220, 330, 440, 550].forEach((f, i) => {
+      setTimeout(() => this.playTone(f, 0.15, 'sawtooth', 0.2), i * 60);
+    });
+  }
+
+  playRareEvent(): void {
+    [523, 659, 784, 988, 1175].forEach((f, i) => {
+      setTimeout(() => this.playTone(f, 0.2, 'square', 0.25), i * 100);
+    });
+    setTimeout(() => this.playNoise(0.25, 0.18), 500);
+  }
+
   setIntensity(value: number): void {
     const prev = this.intensity;
     this.intensity = Math.max(0, Math.min(1, value));
@@ -190,7 +210,7 @@ export class AudioManager {
     const scale = [261, 294, 330, 349, 392, 440, 494, 523];
     this.musicInterval = setInterval(() => {
       if (!this.ctx) return;
-      const freq = scale[this.musicStep % scale.length] * (1 + this.intensity * 0.5);
+      const freq = scale[this.musicStep % scale.length] * (1 + this.intensity * 0.5) * this.realityPitch;
       this.playTone(freq, 0.15, 'triangle', 0.06 + this.intensity * 0.04);
       this.musicStep++;
     }, this.getMusicTickMs());
