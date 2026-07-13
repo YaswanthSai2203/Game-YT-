@@ -160,6 +160,11 @@ export class UIManager {
     this.overlay.querySelectorAll('.modal-layer').forEach((el) => el.remove());
   }
 
+  /** Remove full-screen root layers that can block menu clicks if left behind. */
+  private cleanupTransientRootLayers(): void {
+    this.root.querySelectorAll('.reality-portal, .run-theme-banner, .impossible-crash').forEach((el) => el.remove());
+  }
+
   updateHUD(stats: {
     score: number;
     timeAlive: number;
@@ -576,6 +581,7 @@ export class UIManager {
   }
 
   private renderMenu(): void {
+    this.cleanupTransientRootLayers();
     const save = this.save.save;
     const gridSync = save.worldMemory.gridSync;
     const stage = save.worldMemory.worldStage;
@@ -627,11 +633,11 @@ export class UIManager {
         </div>
 
         <nav class="menu-nav">
-          <button class="btn btn-secondary" data-action="upgrades" aria-label="Upgrades">⚡ Upgrades <span class="credits-badge">${save.dataCredits}◈</span></button>
-          <button class="btn btn-secondary" data-action="daily" aria-label="Daily Challenge">📅 Daily</button>
-          <button class="btn btn-secondary" data-action="achievements" aria-label="Achievements">🏆 Achievements</button>
-          <button class="btn btn-secondary" data-action="leaderboard" aria-label="Leaderboard">📊 Ranks</button>
-          <button class="btn btn-secondary" data-action="settings" aria-label="Settings">⚙️ Settings</button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="upgrades" aria-label="Upgrades">⚡ Upgrades <span class="credits-badge">${save.dataCredits}◈</span></button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="daily" aria-label="Daily Challenge">📅 Daily</button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="achievements" aria-label="Achievements">🏆 Achievements</button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="leaderboard" aria-label="Leaderboard">📊 Ranks</button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="settings" aria-label="Settings">⚙️ Settings</button>
           ${stage >= 4 ? '<button class="btn btn-ghost menu-hidden-btn" data-action="void" aria-label="Hidden">???</button>' : ''}
         </nav>
 
@@ -1086,11 +1092,10 @@ export class UIManager {
       }
 
       #ui-overlay {
-        position: absolute; inset: 0; pointer-events: none; z-index: 20;
+        position: absolute; inset: 0; pointer-events: auto; z-index: 20;
         font-family: 'Rajdhani', sans-serif; color: var(--color-textPrimary);
         font-size: calc(16px * var(--font-scale));
       }
-      #ui-overlay * { pointer-events: auto; }
 
       .screen { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
       .screen-menu {
@@ -1373,7 +1378,7 @@ export class UIManager {
       /* Menu */
       .menu-content {
         width: 100%; max-width: 520px; padding: 16px 20px 24px;
-        text-align: center; margin: auto;
+        text-align: center; margin: auto; position: relative; z-index: 2;
       }
       .menu-header { margin-bottom: 16px; }
       .menu-title { font-family: 'Orbitron', sans-serif; font-size: clamp(1.6rem, 5vw, 2.2rem); font-weight: 900; color: var(--color-neonCyan); text-shadow: 0 0 20px rgba(0,240,255,0.4); line-height: 1.1; }
@@ -1395,7 +1400,16 @@ export class UIManager {
       .mode-desc { display: block; font-size: 0.72rem; color: var(--color-textSecondary); margin-top: 4px; line-height: 1.3; }
       .mode-best { display: block; font-size: 0.68rem; color: var(--color-neonGold); margin-top: 6px; }
 
-      .menu-nav { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
+      .menu-nav { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; position: relative; z-index: 3; }
+      .menu-nav-btn {
+        position: relative; z-index: 1; min-height: 44px;
+        border: 1px solid rgba(255,255,255,0.22) !important;
+      }
+      .menu-nav-btn:hover, .menu-nav-btn:focus-visible {
+        border-color: var(--color-neonCyan) !important;
+        color: var(--color-neonCyan);
+        box-shadow: 0 0 12px rgba(0,240,255,0.15);
+      }
 
       .sync-bar { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
       .sync-label { font-family: 'Orbitron', sans-serif; color: var(--color-neonViolet); white-space: nowrap; }
