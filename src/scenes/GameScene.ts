@@ -2,7 +2,7 @@ import { Container } from 'pixi.js';
 import type { GameConfig, PowerupType, RunStats } from '@/types';
 import { BaseScene } from './BaseScene';
 import {
-  COLORS, PLAYER, LANES, SCORING, POWERUP, MODE_CONFIG, HYPE_COMBO_TIERS,
+  COLORS, PLAYER, LANES, SCORING, POWERUP, PICKUP, MODE_CONFIG, HYPE_COMBO_TIERS,
 } from '@/config/constants';
 import { EventBus } from '@/core/EventBus';
 import { AudioManager } from '@/core/AudioManager';
@@ -18,6 +18,7 @@ import {
   createPlayerCore, createFirewall, createShard,
   createPowerupIcon, createGridBackground, getCoreColor,
   createBossFirewall, createGoldenShard, createGhostCore, createWhiteFirewall,
+  createScoreBoostPickup, createBombPickup,
 } from '@/graphics/ProceduralAssets';
 import { QuantumRealitySystem } from '@/systems/QuantumRealitySystem';
 import { SentientAISystem } from '@/systems/SentientAISystem';
@@ -90,6 +91,8 @@ export class GameScene extends BaseScene {
   private comboHypeHit = new Set<number>();
   private challengeComplete = false;
   private runCredits = 0;
+  private scoreBoostTimer = 0;
+  private bgPulsePhase = 0;
   private sentient!: SentientAISystem;
   private gridSync!: GridSyncSystem;
   private myth!: MythEventSystem;
@@ -277,6 +280,8 @@ export class GameScene extends BaseScene {
     this.comboHypeHit.clear();
     this.challengeComplete = false;
     this.runCredits = 0;
+    this.scoreBoostTimer = 0;
+    this.bgPulsePhase = 0;
     this.ghostContainer = null;
     this.ghostBonusTimer = 0;
 
@@ -361,6 +366,7 @@ export class GameScene extends BaseScene {
     this.particles.update(dt);
     this.floatingText.update(dt);
     this.updatePowerups(dt);
+    this.updateScoreBoost(dt);
     this.updatePhase(dt);
     this.syncEntities();
     this.checkCollisions();
@@ -568,7 +574,8 @@ export class GameScene extends BaseScene {
   }
 
   private popScore(x: number, y: number, delta: number, color: number = COLORS.cyan): void {
-    this.floatingText.spawn(x, y, `+${delta}`, color, delta >= 100 ? 22 : 16);
+    const label = delta >= 0 ? `+${delta}` : `${delta}`;
+    this.floatingText.spawn(x, y, label, color, Math.abs(delta) >= 50 ? 22 : 16);
   }
 
   private updatePhase(dt: number): void {
@@ -625,6 +632,12 @@ export class GameScene extends BaseScene {
             graphic = entity.isQuantumVault ? createGoldenShard(26) : createShard(22);
             graphic.alpha = entity.isQuantumVault ? 1 : 0.8;
             break;
+          case 'score_boost':
+            graphic = createScoreBoostPickup(14);
+            break;
+          case 'bomb':
+            graphic = createBombPickup(14);
+            break;
           default:
             continue;
         }
@@ -647,8 +660,12 @@ export class GameScene extends BaseScene {
       graphic.x = ex;
       graphic.y = ey;
 
-      if (entity.type === 'shard' || entity.type === 'vault') {
+      if (entity.type === 'shard' || entity.type === 'vault' || entity.type === 'score_boost') {
         graphic.rotation += 0.02;
+      }
+      if (entity.type === 'bomb') {
+        graphic.rotation = Math.sin(this.timeAlive * 5 + entity.id) * 0.15;
+        graphic.scale.set(1 + Math.sin(this.timeAlive * 8 + entity.id) * 0.06);
       }
     }
 
@@ -710,6 +727,12 @@ export class GameScene extends BaseScene {
           break;
         case 'powerup':
           this.collectPowerup(entity.id, entity.powerupType!);
+          break;
+        case 'score_boost':
+          this.collectScoreBoost(entity.id);
+          break;
+        case 'bomb':
+          this.collectBomb(entity.id);
           break;
       }
     }
@@ -895,6 +918,50 @@ export class GameScene extends BaseScene {
     this.events.emit('ui:flash', { color: 'rgba(0,255,136,0.3)', duration: 300 });
   }
 
+  private updateScoreBoost(dt: number): void {
+    if (this.scoreBoostTimer > 0) {
+      this.scoreBoostTimer = Math.max(0, this.scoreBoostTimer - dt);
+    }
+  }
+
+  private collectScoreBoost(entityId: number): void {
+    this.spawner.removeEntity(entityId);
+    this.scoreBoostTimer = PICKUP.SCORE_BOOST_DURATION;
+    this.audio.playPowerup();
+    this.particles.burst(this.playerX, this.playerY, COLORS.gold, 18, 220);
+    this.events.emit('ui:hype', {
+      title: '2× SYNC!',
+      subtitle: 'Double points for 10 seconds',
+      tier: 3,
+      color: 'gold',
+    });
+    this.events.emit('ui:toast', { message: 'Score multiplier active!', type: 'milestone' });
+  }
+
+  private collectBomb(entityId: number): void {
+    this.spawner.removeEntity(entityId);
+    this.subtractScore(PICKUP.BOMB_PENALTY, this.playerX, this.playerY - 20);
+    this.audio.playComboBreak();
+    this.shakeAmount = Math.max(this.shakeAmount, 14);
+    this.events.emit('ui:flash', { color: 'rgba(255,0,80,0.35)', duration: 180 });
+    this.particles.burst(this.playerX, this.playerY, COLORS.red, 22, 280);
+    this.events.emit('ui:hype', {
+      title: 'DATA TRAP!',
+      subtitle: `−${PICKUP.BOMB_PENALTY} points`,
+      tier: 1,
+      color: 'magenta',
+    });
+  }
+
+  private subtractScore(amount: number, popupX?: number, popupY?: number): void {
+    const loss = Math.min(amount, this.score);
+    this.score = Math.max(0, this.score - loss);
+    this.events.emit('score:change', { score: this.score, delta: -loss });
+    if (popupX !== undefined && popupY !== undefined && loss > 0) {
+      this.popScore(popupX, popupY, -loss, COLORS.red);
+    }
+  }
+
   private collectPowerup(entityId: number, type: PowerupType): void {
     this.spawner.removeEntity(entityId);
     this.powerupsCollected++;
@@ -920,12 +987,14 @@ export class GameScene extends BaseScene {
   private addScore(delta: number, popupX?: number, popupY?: number): void {
     const overclock = this.activePowerups.some((p) => p.type === 'overclock')
       ? POWERUP.OVERCLOCK_MULTIPLIER : 1;
-    const finalDelta = Math.floor(delta * overclock);
+    const boost = this.scoreBoostTimer > 0 ? PICKUP.SCORE_BOOST_MULTIPLIER : 1;
+    const finalDelta = Math.floor(delta * overclock * boost);
     this.score += finalDelta;
     this.events.emit('score:change', { score: this.score, delta: finalDelta });
     this.checkChallengeVictory();
     if (popupX !== undefined && popupY !== undefined) {
-      this.popScore(popupX, popupY, finalDelta, overclock > 1 ? COLORS.gold : COLORS.cyan);
+      const color = boost > 1 || overclock > 1 ? COLORS.gold : COLORS.cyan;
+      this.popScore(popupX, popupY, finalDelta, color);
     }
   }
 
@@ -982,10 +1051,21 @@ export class GameScene extends BaseScene {
 
   private updateGrid(dt: number): void {
     const speed = this.spawner.getScrollSpeed();
+    this.bgPulsePhase += dt;
+
     for (let i = 0; i < this.gridBg.children.length; i++) {
       const layer = this.gridBg.children[i];
-      layer.y += speed * dt * (0.2 + i * 0.15);
-      if (layer.y > 40) layer.y -= 40;
+      const label = layer.label ?? '';
+      if (label.startsWith('grid-layer-')) {
+        layer.y += speed * dt * (0.2 + i * 0.12);
+        if (layer.y > 40) layer.y -= 40;
+      } else if (label === 'stars') {
+        layer.y += speed * dt * 0.04;
+        if (layer.y > 60) layer.y -= 60;
+        layer.alpha = 0.7 + Math.sin(this.bgPulsePhase * 0.5) * 0.15;
+      } else if (label === 'lane-glow') {
+        layer.alpha = 0.85 + Math.sin(this.bgPulsePhase * 1.2) * 0.15;
+      }
     }
   }
 
@@ -1050,5 +1130,11 @@ export class GameScene extends BaseScene {
   }
   getSpeedRatio(): number {
     return this.spawner.getSpeedRatio();
+  }
+  getScoreBoostRatio(): number {
+    return this.scoreBoostTimer / PICKUP.SCORE_BOOST_DURATION;
+  }
+  hasScoreBoost(): boolean {
+    return this.scoreBoostTimer > 0;
   }
 }

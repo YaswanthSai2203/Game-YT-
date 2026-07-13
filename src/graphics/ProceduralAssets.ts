@@ -141,13 +141,117 @@ export function createPowerupIcon(type: string, size: number): Container {
   return container;
 }
 
+export function createScoreBoostPickup(size: number): Container {
+  const container = new Container();
+  const glow = new Graphics();
+  glow.circle(0, 0, size * 1.4);
+  glow.fill({ color: COLORS.gold, alpha: 0.2 });
+  container.addChild(glow);
+
+  const ring = new Graphics();
+  ring.circle(0, 0, size);
+  ring.fill({ color: COLORS.gold, alpha: 0.85 });
+  ring.stroke({ color: 0xffffff, width: 1.5, alpha: 0.7 });
+  container.addChild(ring);
+
+  const label = new Graphics();
+  label.moveTo(-size * 0.35, 0);
+  label.lineTo(0, -size * 0.45);
+  label.lineTo(size * 0.35, 0);
+  label.lineTo(0, size * 0.15);
+  label.closePath();
+  label.fill({ color: 0xffffff, alpha: 0.95 });
+  container.addChild(label);
+
+  container.label = 'score-boost';
+  return container;
+}
+
+export function createBombPickup(size: number): Container {
+  const container = new Container();
+  const glow = new Graphics();
+  glow.circle(0, 0, size * 1.35);
+  glow.fill({ color: COLORS.red, alpha: 0.25 });
+  container.addChild(glow);
+
+  const body = new Graphics();
+  body.circle(0, 0, size * 0.85);
+  body.fill({ color: 0x220008, alpha: 0.95 });
+  body.stroke({ color: COLORS.red, width: 2, alpha: 0.9 });
+  container.addChild(body);
+
+  const fuse = new Graphics();
+  fuse.moveTo(0, -size * 0.85);
+  fuse.lineTo(size * 0.2, -size * 1.15);
+  fuse.stroke({ color: COLORS.gold, width: 2, alpha: 0.9 });
+  fuse.circle(size * 0.2, -size * 1.15, size * 0.12);
+  fuse.fill({ color: COLORS.gold, alpha: 1 });
+  container.addChild(fuse);
+
+  const skull = new Graphics();
+  skull.circle(-size * 0.18, -size * 0.08, size * 0.12);
+  skull.circle(size * 0.18, -size * 0.08, size * 0.12);
+  skull.fill({ color: COLORS.red, alpha: 0.9 });
+  skull.moveTo(-size * 0.22, size * 0.22);
+  skull.quadraticCurveTo(0, size * 0.05, size * 0.22, size * 0.22);
+  skull.stroke({ color: COLORS.red, width: 1.5, alpha: 0.9 });
+  container.addChild(skull);
+
+  container.label = 'bomb';
+  return container;
+}
+
 export function createGridBackground(width: number, height: number, theme: string): Container {
   const container = new Container();
-  const lineColor = theme === 'inferno' ? 0x441100 : theme === 'matrix' ? 0x003300 : theme === 'quantum' ? 0x220044 : theme === 'ghost' ? 0x330033 : theme === 'gold' ? 0x443300 : COLORS.gridLine;
+  container.label = 'play-background';
 
+  const themeColors: Record<string, { bg: number; accent: number; line: number }> = {
+    inferno: { bg: 0x1a0808, accent: 0xff4400, line: 0x441100 },
+    matrix: { bg: 0x041204, accent: 0x00ff44, line: 0x003300 },
+    quantum: { bg: 0x0c0420, accent: 0x8b5cf6, line: 0x220044 },
+    ghost: { bg: 0x100818, accent: 0xff006e, line: 0x330033 },
+    gold: { bg: 0x141008, accent: 0xffd700, line: 0x443300 },
+    default: { bg: 0x060a14, accent: COLORS.cyan, line: COLORS.gridLine },
+  };
+  const pal = themeColors[theme] ?? themeColors.default;
+
+  const gradient = new Graphics();
+  gradient.rect(0, 0, width, height);
+  gradient.fill({ color: pal.bg, alpha: 1 });
+  container.addChild(gradient);
+
+  const horizon = new Graphics();
+  horizon.rect(0, 0, width, height * 0.45);
+  horizon.fill({ color: pal.accent, alpha: 0.04 });
+  container.addChild(horizon);
+
+  const stars = new Container();
+  stars.label = 'stars';
+  const starGfx = new Graphics();
+  for (let i = 0; i < 48; i++) {
+    const sx = (i * 137.5) % width;
+    const sy = (i * 97.3) % height;
+    const r = 0.6 + (i % 3) * 0.4;
+    starGfx.circle(sx, sy, r);
+    starGfx.fill({ color: 0xffffff, alpha: 0.08 + (i % 5) * 0.04 });
+  }
+  stars.addChild(starGfx);
+  container.addChild(stars);
+
+  const laneGlow = new Graphics();
+  laneGlow.label = 'lane-glow';
+  const laneXs = [width * 0.2, width * 0.5, width * 0.8];
+  for (const lx of laneXs) {
+    laneGlow.rect(lx - width * 0.08, 0, width * 0.16, height);
+    laneGlow.fill({ color: pal.accent, alpha: 0.035 });
+  }
+  container.addChild(laneGlow);
+
+  const lineColor = pal.line;
   for (let layer = 0; layer < 3; layer++) {
     const layerContainer = new Container();
-    const alpha = 0.15 + layer * 0.1;
+    layerContainer.label = `grid-layer-${layer}`;
+    const alpha = 0.12 + layer * 0.08;
     const spacing = 40 + layer * 20;
     const g = new Graphics();
     for (let y = 0; y < height + spacing; y += spacing) {
@@ -159,12 +263,20 @@ export function createGridBackground(width: number, height: number, theme: strin
     for (let i = 1; i < 3; i++) {
       g.moveTo(laneWidth * i, 0);
       g.lineTo(laneWidth * i, height);
-      g.stroke({ color: lineColor, width: 1, alpha: alpha * 0.5 });
+      g.stroke({ color: pal.accent, width: 1, alpha: alpha * 0.35 });
     }
     layerContainer.addChild(g);
-    layerContainer.label = `grid-layer-${layer}`;
     container.addChild(layerContainer);
   }
+
+  const scanlines = new Graphics();
+  scanlines.label = 'scanlines';
+  for (let y = 0; y < height; y += 4) {
+    scanlines.moveTo(0, y);
+    scanlines.lineTo(width, y);
+    scanlines.stroke({ color: 0x000000, width: 1, alpha: 0.06 });
+  }
+  container.addChild(scanlines);
 
   return container;
 }

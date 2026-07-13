@@ -125,6 +125,16 @@ export const POWERUP = {
   OVERCLOCK_MULTIPLIER: 2,
 } as const;
 
+/** Lane pickups — score boost bonus and bomb traps */
+export const PICKUP = {
+  SCORE_BOOST_DURATION: 10,
+  SCORE_BOOST_MULTIPLIER: 2,
+  BOMB_PENALTY: 100,
+  BONUS_SPAWN_CHANCE: 0.07,
+  TRAP_SPAWN_CHANCE: 0.045,
+  MIN_SPAWN_TIME: 22,
+} as const;
+
 export const SYNC = {
   XP_PER_SHARD: 5,
   XP_PER_LEVEL: [0, 100, 250, 500, 800, 1200, 1700, 2300, 3000, 4000, 5000],

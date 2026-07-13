@@ -15,8 +15,10 @@
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0e1a; touch-action: none; -webkit-tap-highlight-color: transparent; }
-      #game-container { width: 100%; height: 100%; position: relative; }
-      canvas { display: block; width: 100%; height: 100%; }
+      #game-container { width: 100%; height: 100%; position: relative; overflow: hidden; }
+      #game-container canvas {
+        display: block; position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0;
+      }
       .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
     </style>
   </head>

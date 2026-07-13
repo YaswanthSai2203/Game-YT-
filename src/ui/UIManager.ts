@@ -168,6 +168,8 @@ export class UIManager {
     speed?: number;
     speedRatio?: number;
     targetScore?: number;
+    scoreBoostRatio?: number;
+    scoreBoostActive?: boolean;
   }): void {
     const scoreEl = this.overlay.querySelector('#hud-score');
     const timeEl = this.overlay.querySelector('#hud-time');
@@ -201,12 +203,19 @@ export class UIManager {
     if (phaseEl) phaseEl.style.width = `${stats.phase * 100}%`;
     if (powerupsEl) {
       const labels: Record<string, string> = { shield: 'S', magnet: 'M', overclock: 'O', chronos: 'C' };
-      powerupsEl.innerHTML = stats.powerups.map((p) =>
+      let html = stats.powerups.map((p) =>
         `<span class="powerup-badge" aria-label="${p.type} powerup active" title="${p.type}">
           <span class="powerup-letter">${labels[p.type] ?? p.type[0].toUpperCase()}</span>
           <span class="powerup-timer" style="width:${Math.round(p.ratio * 100)}%"></span>
         </span>`,
       ).join('');
+      if (stats.scoreBoostActive && stats.scoreBoostRatio !== undefined) {
+        html += `<span class="powerup-badge score-boost-badge" aria-label="2x score boost active" title="2× score boost">
+          <span class="powerup-letter">2×</span>
+          <span class="powerup-timer" style="width:${Math.round(stats.scoreBoostRatio * 100)}%"></span>
+        </span>`;
+      }
+      powerupsEl.innerHTML = html;
     }
     if (speedEl && stats.speed !== undefined) {
       speedEl.textContent = `×${stats.speed.toFixed(1)}`;
@@ -693,7 +702,8 @@ export class UIManager {
       </div>
     `;
 
-    this.overlay.querySelector('#hud-pause')?.addEventListener('click', () => {
+    this.overlay.querySelector('#hud-pause')?.addEventListener('click', (e) => {
+      e.stopPropagation();
       this.audio.playMenuConfirm();
       this.callbacks.onPause?.();
     });
@@ -769,6 +779,7 @@ export class UIManager {
     this.removeModals();
     const pauseEl = document.createElement('div');
     pauseEl.className = 'modal-layer screen-pause';
+    pauseEl.style.pointerEvents = 'auto';
     pauseEl.innerHTML = `
       <div class="modal panel animate-in">
         <h2 class="modal-title">PAUSED</h2>
@@ -1048,7 +1059,7 @@ export class UIManager {
       }
 
       #ui-overlay {
-        position: absolute; inset: 0; pointer-events: none; z-index: 10;
+        position: absolute; inset: 0; pointer-events: none; z-index: 20;
         font-family: 'Rajdhani', sans-serif; color: var(--color-textPrimary);
         font-size: calc(16px * var(--font-scale));
       }
@@ -1064,7 +1075,10 @@ export class UIManager {
         background: rgba(10, 14, 26, 0.97);
       }
       .screen-hud { pointer-events: none; flex-direction: column; justify-content: space-between; padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
-      .screen-hud .hud-pause { pointer-events: auto; }
+      .screen-hud .hud-top,
+      .screen-hud .hud-bottom,
+      .screen-hud .hud-hint { pointer-events: auto; }
+      .screen-hud .hud-pause { pointer-events: auto; cursor: pointer; position: relative; z-index: 30; }
 
       #ui-flash {
         position: absolute; inset: 0; pointer-events: none; z-index: 20; opacity: 0;
@@ -1353,7 +1367,7 @@ export class UIManager {
       .btn-icon { background: rgba(18,24,41,0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 12px; color: var(--color-textPrimary); cursor: pointer; font-size: 1rem; }
 
       /* HUD */
-      .hud-top { display: flex; align-items: flex-start; justify-content: space-between; width: 100%; padding-top: env(safe-area-inset-top, 8px); gap: 8px; flex-wrap: wrap; }
+      .hud-top { display: flex; align-items: flex-start; justify-content: space-between; width: 100%; padding-top: env(safe-area-inset-top, 8px); gap: 8px; flex-wrap: wrap; position: relative; z-index: 25; }
       .hud-label { font-size: 0.65rem; color: var(--color-textSecondary); letter-spacing: 0.15em; }
       .hud-score { font-family: 'Orbitron', sans-serif; font-size: 1.6rem; font-weight: 800; display: block; }
       .hud-time { font-family: 'Orbitron', sans-serif; font-size: 1.2rem; font-weight: 600; }
@@ -1390,6 +1404,9 @@ export class UIManager {
         background: var(--color-neonCyan); box-shadow: 0 0 6px var(--color-neonCyan);
         transition: width 0.1s linear;
       }
+      .score-boost-badge { border-color: var(--color-neonGold); background: rgba(255,215,0,0.15); box-shadow: 0 0 10px rgba(255,215,0,0.25); }
+      .score-boost-badge .powerup-letter { color: var(--color-neonGold); }
+      .score-boost-badge .powerup-timer { background: var(--color-neonGold); box-shadow: 0 0 6px var(--color-neonGold); }
       .unlock-banner {
         display: flex; flex-direction: column; gap: 6px; margin: 12px 0;
         padding: 10px; border: 1px solid var(--color-neonViolet); border-radius: 8px;
