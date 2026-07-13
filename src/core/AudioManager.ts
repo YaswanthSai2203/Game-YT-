@@ -7,6 +7,7 @@ export class AudioManager {
   private masterGain: GainNode | null = null;
   private sfxGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
+  private musicFilter: BiquadFilterNode | null = null;
   private realityPitch = 1;
   private musicOscs: OscillatorNode[] = [];
   private musicInterval: ReturnType<typeof setInterval> | null = null;
@@ -26,8 +27,13 @@ export class AudioManager {
     this.masterGain = this.ctx.createGain();
     this.sfxGain = this.ctx.createGain();
     this.musicGain = this.ctx.createGain();
+    this.musicFilter = this.ctx.createBiquadFilter();
+    this.musicFilter.type = 'lowpass';
+    this.musicFilter.frequency.value = 1200;
+    this.musicFilter.Q.value = 0.7;
     this.sfxGain.connect(this.masterGain);
-    this.musicGain.connect(this.masterGain);
+    this.musicGain.connect(this.musicFilter);
+    this.musicFilter.connect(this.masterGain);
     this.masterGain.connect(this.ctx.destination);
     this.applyVolumes();
   }
@@ -62,8 +68,9 @@ export class AudioManager {
     type: OscillatorType = 'sine',
     volume = 0.3,
     detune = 0,
+    destination: GainNode | null = this.sfxGain,
   ): void {
-    if (!this.ctx || !this.sfxGain) return;
+    if (!this.ctx || !destination) return;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = type;
@@ -72,7 +79,7 @@ export class AudioManager {
     gain.gain.setValueAtTime(volume, this.ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
     osc.connect(gain);
-    gain.connect(this.sfxGain);
+    gain.connect(destination);
     osc.start();
     osc.stop(this.ctx.currentTime + duration);
   }
@@ -88,8 +95,12 @@ export class AudioManager {
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
     const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 2400;
     gain.gain.value = volume;
-    source.connect(gain);
+    source.connect(filter);
+    filter.connect(gain);
     gain.connect(this.sfxGain);
     source.start();
   }
@@ -100,28 +111,41 @@ export class AudioManager {
     setTimeout(() => this.playTone(659, 0.1, 'sine', 0.2), 80);
     setTimeout(() => this.playTone(784, 0.15, 'sine', 0.25), 160);
   }
-  playLaneSwitch(): void { this.playNoise(0.08, 0.1); }
+  playLaneSwitch(): void {
+    if (!this.ctx || !this.sfxGain) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(520, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(780, this.ctx.currentTime + 0.06);
+    gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.08);
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.08);
+  }
   playShardCollect(combo: number): void {
     const base = 440 + combo * 30;
     this.playTone(base, 0.12, 'sine', 0.25);
-    this.playTone(base * 1.5, 0.08, 'triangle', 0.1);
+    this.playTone(base * 1.5, 0.08, 'sine', 0.08);
   }
   playComboUp(): void {
-    this.playTone(660, 0.08, 'square', 0.15);
-    setTimeout(() => this.playTone(880, 0.08, 'square', 0.15), 60);
+    this.playTone(660, 0.08, 'sine', 0.15);
+    setTimeout(() => this.playTone(880, 0.08, 'sine', 0.15), 60);
   }
   playPhaseShift(): void {
-    this.playTone(110, 0.3, 'sawtooth', 0.3);
-    this.playTone(880, 0.2, 'sine', 0.15);
+    this.playTone(220, 0.25, 'sine', 0.18);
+    this.playTone(880, 0.2, 'sine', 0.12);
   }
   playPowerup(): void {
-    this.playTone(330, 0.15, 'square', 0.25);
-    setTimeout(() => this.playTone(440, 0.15, 'square', 0.25), 100);
-    setTimeout(() => this.playTone(550, 0.2, 'square', 0.25), 200);
+    this.playTone(330, 0.15, 'sine', 0.22);
+    setTimeout(() => this.playTone(440, 0.15, 'sine', 0.2), 100);
+    setTimeout(() => this.playTone(550, 0.2, 'sine', 0.2), 200);
   }
   playHit(): void {
-    this.playNoise(0.4, 0.4);
-    this.playTone(80, 0.5, 'sawtooth', 0.4);
+    this.playNoise(0.35, 0.3);
+    this.playTone(90, 0.4, 'sine', 0.25);
   }
   playAchievement(): void {
     [523, 659, 784, 1047].forEach((f, i) => {
@@ -130,43 +154,43 @@ export class AudioManager {
   }
   playNearMiss(): void {
     this.playTone(880, 0.06, 'sine', 0.18);
-    setTimeout(() => this.playTone(1100, 0.08, 'triangle', 0.12), 40);
+    setTimeout(() => this.playTone(1100, 0.08, 'sine', 0.1), 40);
   }
   playShieldBreak(): void {
-    this.playNoise(0.25, 0.25);
-    this.playTone(220, 0.2, 'square', 0.2);
-    setTimeout(() => this.playTone(440, 0.15, 'sine', 0.15), 80);
+    this.playNoise(0.2, 0.18);
+    this.playTone(220, 0.2, 'sine', 0.16);
+    setTimeout(() => this.playTone(440, 0.15, 'sine', 0.12), 80);
   }
   playComboBreak(): void {
-    this.playTone(330, 0.12, 'sawtooth', 0.12);
-    setTimeout(() => this.playTone(220, 0.18, 'sawtooth', 0.1), 60);
+    this.playTone(330, 0.12, 'sine', 0.1);
+    setTimeout(() => this.playTone(220, 0.18, 'sine', 0.08), 60);
   }
   playCountdownTick(final = false): void {
     if (final) {
-      this.playTone(523, 0.12, 'square', 0.25);
-      setTimeout(() => this.playTone(784, 0.2, 'square', 0.3), 80);
+      this.playTone(523, 0.12, 'sine', 0.22);
+      setTimeout(() => this.playTone(784, 0.2, 'sine', 0.26), 80);
     } else {
-      this.playTone(440, 0.08, 'square', 0.2);
+      this.playTone(440, 0.08, 'sine', 0.18);
     }
   }
   playHype(tier: number): void {
     const t = Math.max(1, Math.min(5, tier));
     const base = 330 + t * 80;
-    this.playTone(base, 0.1, 'square', 0.22);
-    setTimeout(() => this.playTone(base * 1.25, 0.1, 'square', 0.2), 70);
-    setTimeout(() => this.playTone(base * 1.5, 0.15, 'sine', 0.28), 140);
+    this.playTone(base, 0.1, 'sine', 0.2);
+    setTimeout(() => this.playTone(base * 1.25, 0.1, 'sine', 0.18), 70);
+    setTimeout(() => this.playTone(base * 1.5, 0.15, 'sine', 0.24), 140);
     if (t >= 3) {
-      setTimeout(() => this.playTone(base * 2, 0.2, 'triangle', 0.18), 220);
+      setTimeout(() => this.playTone(base * 2, 0.2, 'sine', 0.14), 220);
     }
     if (t >= 4) {
-      this.playNoise(0.12, 0.12);
+      this.playNoise(0.1, 0.08);
     }
   }
   playVaultJackpot(): void {
     [440, 554, 659, 880, 1108].forEach((f, i) => {
-      setTimeout(() => this.playTone(f, 0.18, 'square', 0.28), i * 90);
+      setTimeout(() => this.playTone(f, 0.18, 'sine', 0.24), i * 90);
     });
-    setTimeout(() => this.playNoise(0.2, 0.15), 400);
+    setTimeout(() => this.playNoise(0.15, 0.1), 400);
   }
 
   setRealityPitch(pitch: number): void {
@@ -175,29 +199,33 @@ export class AudioManager {
   }
 
   playFracture(): void {
-    this.playNoise(0.35, 0.2);
+    this.playNoise(0.25, 0.14);
     [220, 330, 440, 550].forEach((f, i) => {
-      setTimeout(() => this.playTone(f, 0.15, 'sawtooth', 0.2), i * 60);
+      setTimeout(() => this.playTone(f, 0.15, 'sine', 0.14), i * 60);
     });
   }
 
   playRareEvent(): void {
     [523, 659, 784, 988, 1175].forEach((f, i) => {
-      setTimeout(() => this.playTone(f, 0.2, 'square', 0.25), i * 100);
+      setTimeout(() => this.playTone(f, 0.2, 'sine', 0.2), i * 100);
     });
-    setTimeout(() => this.playNoise(0.25, 0.18), 500);
+    setTimeout(() => this.playNoise(0.2, 0.12), 500);
   }
 
   setIntensity(value: number): void {
     const prev = this.intensity;
     this.intensity = Math.max(0, Math.min(1, value));
+    if (this.musicFilter) {
+      const targetFreq = 900 + this.intensity * 500;
+      this.musicFilter.frequency.setTargetAtTime(targetFreq, this.ctx?.currentTime ?? 0, 0.2);
+    }
     if (this.musicPlaying && Math.abs(prev - this.intensity) > 0.08) {
       this.restartMusicTicker();
     }
   }
 
   private getMusicTickMs(): number {
-    return Math.max(180, 420 - this.intensity * 180);
+    return Math.max(220, 480 - this.intensity * 160);
   }
 
   private restartMusicTicker(): void {
@@ -209,9 +237,9 @@ export class AudioManager {
   private startMusicTicker(): void {
     const scale = [261, 294, 330, 349, 392, 440, 494, 523];
     this.musicInterval = setInterval(() => {
-      if (!this.ctx) return;
-      const freq = scale[this.musicStep % scale.length] * (1 + this.intensity * 0.5) * this.realityPitch;
-      this.playTone(freq, 0.15, 'triangle', 0.06 + this.intensity * 0.04);
+      if (!this.ctx || !this.musicGain) return;
+      const freq = scale[this.musicStep % scale.length] * (1 + this.intensity * 0.35) * this.realityPitch;
+      this.playTone(freq, 0.18, 'sine', 0.035 + this.intensity * 0.02, 0, this.musicGain);
       this.musicStep++;
     }, this.getMusicTickMs());
   }
@@ -220,13 +248,17 @@ export class AudioManager {
     if (this.musicPlaying || !this.ctx || !this.musicGain) return;
     this.musicPlaying = true;
 
-    const baseFreq = 110;
-    for (let i = 0; i < 3; i++) {
+    const pads = [
+      { freq: 55, gain: 0.012 },
+      { freq: 82.5, gain: 0.008 },
+      { freq: 110, gain: 0.006 },
+    ];
+    for (const pad of pads) {
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
-      osc.type = i === 0 ? 'sawtooth' : 'sine';
-      osc.frequency.value = baseFreq * (i + 1);
-      gain.gain.value = i === 0 ? 0.04 : 0.02;
+      osc.type = 'sine';
+      osc.frequency.value = pad.freq;
+      gain.gain.value = pad.gain;
       osc.connect(gain);
       gain.connect(this.musicGain);
       osc.start();
@@ -264,16 +296,16 @@ export class AudioManager {
     if (this.layerInterval) clearInterval(this.layerInterval);
 
     if (layer === 'heartbeat') {
-      this.layerInterval = setInterval(() => this.playTone(55, 0.08, 'sine', 0.12), 700);
+      this.layerInterval = setInterval(() => this.playTone(55, 0.06, 'sine', 0.08, 0, this.musicGain), 850);
     } else if (layer === 'choir') {
       this.layerInterval = setInterval(() => {
-        this.playTone(330, 0.2, 'sine', 0.06);
-        this.playTone(415, 0.2, 'sine', 0.05);
-        this.playTone(523, 0.2, 'sine', 0.05);
-      }, 900);
+        this.playTone(330, 0.22, 'sine', 0.04, 0, this.musicGain);
+        this.playTone(415, 0.22, 'sine', 0.035, 0, this.musicGain);
+        this.playTone(523, 0.22, 'sine', 0.035, 0, this.musicGain);
+      }, 1100);
     } else if (layer === 'piano') {
       [262, 330, 392].forEach((f, i) => {
-        setTimeout(() => this.playTone(f, 0.5, 'triangle', 0.15), i * 180);
+        setTimeout(() => this.playTone(f, 0.5, 'sine', 0.1, 0, this.musicGain), i * 180);
       });
     }
   }

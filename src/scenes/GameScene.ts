@@ -23,6 +23,8 @@ import { QuantumRealitySystem } from '@/systems/QuantumRealitySystem';
 import { SentientAISystem } from '@/systems/SentientAISystem';
 import { MythEventSystem } from '@/systems/MythEventSystem';
 import { LivingWatcher } from '@/systems/LivingWatcher';
+import { GridSyncSystem } from '@/systems/GridSyncSystem';
+import { GRID_SYNC } from '@/config/sentientConfig';
 import { clamp, easeOutCubic, circleRectOverlap, lerp } from '@/utils/math';
 
 interface ActivePowerup {
@@ -36,7 +38,7 @@ export class GameScene extends BaseScene {
   private save: SaveManager;
   private achievements: AchievementManager;
   private upgrades: UpgradeManager;
-  private onComplete: ((stats: RunStats) => void) | null = null;
+  private onComplete: ((stats: RunStats, syncCompleted?: boolean) => void) | null = null;
 
   private config: GameConfig = { mode: 'endless' };
   private spawner!: SpawnerSystem;
@@ -89,11 +91,15 @@ export class GameScene extends BaseScene {
   private challengeComplete = false;
   private runCredits = 0;
   private sentient!: SentientAISystem;
+  private gridSync!: GridSyncSystem;
   private myth!: MythEventSystem;
   private watcher: LivingWatcher | null = null;
   private fourthLaneActive = false;
   private gamePausedForEvent = false;
   private phaseCooldownBase: number = PLAYER.PHASE_COOLDOWN;
+  private currentAudioLayer: 'heartbeat' | 'choir' | 'piano' | 'none' = 'none';
+  private firstMoveLogged = false;
+  private lastRunFirstMove: number | null = null;
 
   private unsubscribers: (() => void)[] = [];
 
@@ -110,7 +116,7 @@ export class GameScene extends BaseScene {
     this.upgrades = upgrades;
   }
 
-  setOnComplete(cb: (stats: RunStats) => void): void {
+  setOnComplete(cb: (stats: RunStats, syncCompleted?: boolean) => void): void {
     this.onComplete = cb;
   }
 
@@ -149,9 +155,15 @@ export class GameScene extends BaseScene {
       this.events.on('reality:fracture_end', () => this.onRealityFractureEnd()),
       this.events.on('reality:rare', (d) => this.onRareEvent(d.type)),
       this.events.on('reality:rare_end', (d) => this.onRareEventEnd(d.type)),
-      this.events.on('reality:assist', () => this.spawner?.queueAssistShard()),
+      this.events.on('reality:assist', () => {
+        this.spawner?.queueAssistShard();
+        this.gridSync?.onAssistReceived();
+      }),
       this.events.on('myth:spawn_white', () => this.spawner?.spawnWhiteFirewall()),
       this.events.on('world:impossible_crash', () => { void this.handleImpossibleCrash(); }),
+      this.events.on('grid:myth', (d) => this.gridSync?.onMythWitnessed(d.id)),
+      this.events.on('grid:habit_broken', () => this.gridSync?.onHabitBroken()),
+      this.events.on('grid:adaptive_unlock', () => this.gridSync?.onAdaptiveUnlocked()),
     );
   }
 
@@ -212,13 +224,22 @@ export class GameScene extends BaseScene {
     this.reality = new QuantumRealitySystem(this.events, seed);
     this.reality.reset();
     this.reality.initAdaptive(this.save.save.worldMemory.adaptiveUnlocked);
+    this.reality.setHiddenDimensionsUnlocked(
+      this.save.save.worldMemory.gridSync >= GRID_SYNC.THRESHOLDS.HIDDEN_DIM,
+    );
     this.sentient = new SentientAISystem(this.events, this.save);
     this.sentient.reset();
+    this.gridSync = new GridSyncSystem(this.events, this.save);
+    this.gridSync.resetRun();
     this.myth = new MythEventSystem(this.events, this.save, seed);
     this.myth.reset();
 
-    if (!this.save.save.worldMemory.watcherDefeated) {
+    const showWatcher = this.save.save.worldMemory.gridSync >= GRID_SYNC.THRESHOLDS.WATCHER
+      && !this.save.save.worldMemory.watcherDefeated;
+    if (showWatcher) {
       this.watcher = new LivingWatcher(this.container, this.gameWidth, this.gameHeight);
+    } else {
+      this.watcher = null;
     }
 
     this.phaseCooldownBase = PLAYER.PHASE_COOLDOWN * this.upgrades.getPhaseCooldownFactor();
@@ -229,8 +250,9 @@ export class GameScene extends BaseScene {
     this.playerY = this.gameHeight * 0.78;
     this.laneSwitchProgress = 1;
 
-    const coreColor = getCoreColor(this.save.save.unlocks.selectedCore);
-    this.playerContainer = createPlayerCore(PLAYER.RADIUS, coreColor);
+    const coreId = this.save.save.unlocks.selectedCore;
+    const coreColor = getCoreColor(coreId);
+    this.playerContainer = createPlayerCore(PLAYER.RADIUS, coreColor, coreId);
     this.playerContainer.x = this.playerX;
     this.playerContainer.y = this.playerY;
     this.container.addChild(this.playerContainer);
@@ -258,6 +280,9 @@ export class GameScene extends BaseScene {
     this.ghostContainer = null;
     this.ghostBonusTimer = 0;
 
+    this.firstMoveLogged = false;
+    this.currentAudioLayer = 'none';
+
     if (this.upgrades.hasStartShield()) {
       this.hasShield = true;
       this.activePowerups.push({ type: 'shield', timer: POWERUP.DURATION.shield });
@@ -279,6 +304,12 @@ export class GameScene extends BaseScene {
       this.laneSwitchProgress = 0;
       this.audio.playLaneSwitch();
       this.sentient.onLaneMove(direction);
+      if (!this.firstMoveLogged) {
+        this.firstMoveLogged = true;
+        const sameAsLast = this.lastRunFirstMove === direction;
+        this.gridSync.onFirstMove(direction, sameAsLast);
+        this.lastRunFirstMove = direction;
+      }
       if (!this.save.save.tutorialCompleted) {
         this.save.markTutorialComplete();
         this.events.emit('ui:tutorial', { step: -1 });
@@ -293,6 +324,7 @@ export class GameScene extends BaseScene {
       this.phaseTimer = PLAYER.PHASE_DURATION;
       this.phaseCooldown = this.phaseCooldownBase;
       this.phaseShifts++;
+      this.gridSync.onPhaseUsed();
       this.audio.playPhaseShift();
       this.particles.burst(this.playerX, this.playerY, COLORS.violet, 16, 250);
     }
@@ -316,6 +348,7 @@ export class GameScene extends BaseScene {
     this.updatePlayer(scaledDt);
     this.reality.update(dt, this.combo.getCombo(), this.score);
     this.sentient.update(dt, this.combo.getCombo(), this.timeAlive, this.isNearDeath());
+    this.gridSync.onCombo(this.combo.getCombo());
     this.myth.update(dt, this.timeAlive);
     this.sentient.onComboHigh(this.combo.getCombo());
     this.reality.setPunishLanes(this.sentient.shouldPunishLeftHabit(), this.sentient.shouldPunishRightHabit());
@@ -374,15 +407,21 @@ export class GameScene extends BaseScene {
     return !this.hasShield && !this.phaseActive && this.spawner.getSpeedMultiplier() > 2;
   }
 
+  private setAudioLayer(layer: 'heartbeat' | 'choir' | 'piano' | 'none'): void {
+    if (this.currentAudioLayer === layer) return;
+    this.currentAudioLayer = layer;
+    this.audio.setEmotionalLayer(layer, layer !== 'none');
+  }
+
   private updateAudioLayers(): void {
     if (this.isNearDeath()) {
-      this.events.emit('audio:layer', { layer: 'heartbeat', active: true });
+      this.setAudioLayer('heartbeat');
     } else if (this.combo.getCombo() >= 8) {
-      this.events.emit('audio:layer', { layer: 'choir', active: true });
+      this.setAudioLayer('choir');
     } else if (this.reality.getActiveDimension()) {
-      this.events.emit('audio:layer', { layer: 'none', active: true });
+      this.setAudioLayer('none');
     } else {
-      this.events.emit('audio:layer', { layer: 'none', active: false });
+      this.setAudioLayer('none');
     }
   }
 
@@ -430,6 +469,12 @@ export class GameScene extends BaseScene {
   }
 
   private onRealityFracture(theme: string, _tint: string): void {
+    const dim = this.reality.getActiveDimension();
+    if (dim) {
+      this.save.recordDimensionSeen(dim.id);
+      this.gridSync.onDimensionEntered(dim.id);
+      this.events.emit('grid:dimension', { id: dim.id });
+    }
     if (this.save.settings.reducedMotion) return;
     this.shakeAmount = Math.max(this.shakeAmount, 10);
     this.container.removeChild(this.gridBg);
@@ -472,8 +517,9 @@ export class GameScene extends BaseScene {
 
   private applyRealityGlitch(): void {
     if (this.save.settings.reducedMotion) return;
-    const g = this.reality.getGlitchIntensity();
-    if (g > 0.35) {
+    const baseGlitch = this.save.save.worldMemory.gridSync >= GRID_SYNC.THRESHOLDS.GLITCHES ? 0.12 : 0;
+    const g = this.reality.getGlitchIntensity() + baseGlitch;
+    if (g > 0.2) {
       this.container.x += (Math.random() - 0.5) * g * 4;
     }
   }
@@ -756,8 +802,8 @@ export class GameScene extends BaseScene {
       this.shakeAmount = 8;
       this.events.emit('ui:flash', { color: 'rgba(0,255,136,0.35)', duration: 200 });
       this.audio.playShieldBreak();
-      this.events.emit('audio:layer', { layer: 'piano', active: true });
-      setTimeout(() => this.events.emit('audio:layer', { layer: 'piano', active: false }), 2000);
+      this.audio.setEmotionalLayer('piano', true);
+      setTimeout(() => this.audio.setEmotionalLayer('piano', false), 2000);
       return;
     }
 
@@ -925,10 +971,12 @@ export class GameScene extends BaseScene {
       realitiesDiscovered: this.reality.getDiscoveredThisRun(),
     };
 
+    const syncCompleted = this.gridSync.finalizeRun(stats);
+
     setTimeout(() => {
       this.events.emit('game:over', { stats });
       this.achievements.check(stats);
-      this.onComplete?.(stats);
+      this.onComplete?.(stats, syncCompleted);
     }, fromDeath ? 800 : 100);
   }
 
@@ -959,6 +1007,12 @@ export class GameScene extends BaseScene {
       g.destroy({ children: true });
     }
     this.entityGraphics.clear();
+  }
+
+  abandonRunEarly(): void {
+    if (this.gameOver) return;
+    this.gridSync.onQuitEarly(this.timeAlive);
+    this.gameOver = true;
   }
 
   getScore(): number { return this.score; }

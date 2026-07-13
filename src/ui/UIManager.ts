@@ -1,6 +1,7 @@
 import type { GameMode, GameSettings, RunStats } from '@/types';
 import { getColorBlindPalette } from '@/config/designTokens';
 import { MODE_CONFIG, SYNC, GAME } from '@/config/constants';
+import { GRID_SYNC, GRID_SYNC_COMPLETE_COPY } from '@/config/sentientConfig';
 import { formatScore, formatTime } from '@/utils/math';
 import { SaveManager } from '@/core/SaveManager';
 import { AchievementManager } from '@/core/AchievementManager';
@@ -80,7 +81,7 @@ export class UIManager {
     this.events.on('ai:memory', (d) => this.showAIMemory(d.text));
     this.events.on('community:hex_flash', (d) => this.flashHexFragment(d.fragment));
     this.events.on('ui:impossible_crash', () => this.showImpossibleCrash());
-    this.events.on('audio:layer', (d) => this.audio.setEmotionalLayer(d.layer, d.active));
+    this.events.on('grid:sync_complete', () => { /* handled at game over */ });
 
     this.events.on('settings:change', () => this.applyTheme());
   }
@@ -398,6 +399,29 @@ export class UIManager {
     setTimeout(() => el.remove(), 6000);
   }
 
+  playGridSyncComplete(): Promise<void> {
+    return new Promise((resolve) => {
+      const el = document.createElement('div');
+      el.className = 'grid-sync-complete';
+      el.innerHTML = `
+        <div class="grid-sync-inner animate-in">
+          <p class="grid-sync-line1">${GRID_SYNC_COMPLETE_COPY.line1}</p>
+          <p class="grid-sync-line2">${GRID_SYNC_COMPLETE_COPY.line2}</p>
+          <p class="grid-sync-line3">${GRID_SYNC_COMPLETE_COPY.line3}</p>
+        </div>
+      `;
+      this.root.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('visible'));
+      setTimeout(() => {
+        el.classList.add('fade-out');
+        setTimeout(() => {
+          el.remove();
+          resolve();
+        }, 1200);
+      }, 5500);
+    });
+  }
+
   playFakeEnding(score: number): Promise<void> {
     return new Promise((resolve) => {
       const el = document.createElement('div');
@@ -505,12 +529,15 @@ export class UIManager {
   }
 
   private renderSplash(): void {
+    const syncComplete = this.save.save.worldMemory.gridSyncComplete;
+    const title = syncComplete ? 'THE GRID' : GAME.TITLE;
+    const subtitle = syncComplete ? 'YOU ARE PART OF THE LATTICE' : GAME.SUBTITLE;
     this.overlay.className = 'screen screen-splash';
     this.overlay.innerHTML = `
       <div class="splash-content animate-in">
         <div class="splash-glow"></div>
-        <h1 class="splash-title">${GAME.TITLE}</h1>
-        <p class="splash-subtitle">${GAME.SUBTITLE}</p>
+        <h1 class="splash-title">${title}</h1>
+        <p class="splash-subtitle">${subtitle}</p>
         <div class="splash-pulse"></div>
       </div>
     `;
@@ -518,22 +545,35 @@ export class UIManager {
 
   private renderMenu(): void {
     const save = this.save.save;
+    const gridSync = save.worldMemory.gridSync;
     const stage = save.worldMemory.worldStage;
+    const syncComplete = save.worldMemory.gridSyncComplete;
     const xpNext = SYNC.XP_PER_LEVEL[save.profile.syncLevel] ?? 99999;
     const xpPrev = SYNC.XP_PER_LEVEL[save.profile.syncLevel - 1] ?? 0;
     const xpProgress = ((save.profile.syncXP - xpPrev) / (xpNext - xpPrev)) * 100;
-    const title = stage >= 5 ? 'NEØN PULSÈ' : stage >= 2 ? 'NEON PULSЕ' : GAME.TITLE;
-    const corruptClass = stage >= 5 ? 'menu-corrupt' : stage >= 2 ? 'menu-glitch' : '';
 
-    this.overlay.className = `screen screen-menu menu-stage-${stage}`;
+    let title: string = GAME.TITLE;
+    if (syncComplete) title = 'THE GRID';
+    else if (gridSync >= GRID_SYNC.THRESHOLDS.MENU) title = 'NEØN PULSÈ';
+    else if (gridSync >= GRID_SYNC.THRESHOLDS.WHISPERS) title = 'NEON PULSЕ';
+
+    const corruptClass = gridSync >= GRID_SYNC.THRESHOLDS.MENU ? 'menu-corrupt'
+      : gridSync >= GRID_SYNC.THRESHOLDS.WHISPERS ? 'menu-glitch' : '';
+    const subtitle = syncComplete
+      ? 'YOU ARE PART OF THE LATTICE'
+      : gridSync >= GRID_SYNC.THRESHOLDS.MENU
+        ? 'QUANTUM RUN // THE GRID IS WATCHING'
+        : GAME.SUBTITLE;
+
+    this.overlay.className = `screen screen-menu menu-stage-${stage}${syncComplete ? ' menu-sync-complete' : ''}`;
     this.overlay.innerHTML = `
-      ${stage >= 1 ? '<div class="menu-cracks"></div>' : ''}
-      ${stage >= 3 && !save.worldMemory.watcherDefeated ? '<div class="menu-watcher" aria-hidden="true"></div>' : ''}
+      ${gridSync >= GRID_SYNC.THRESHOLDS.GLITCHES ? '<div class="menu-cracks"></div>' : ''}
+      ${gridSync >= GRID_SYNC.THRESHOLDS.WATCHER && !save.worldMemory.watcherDefeated ? '<div class="menu-watcher" aria-hidden="true"></div>' : ''}
       <div class="menu-content animate-in ${corruptClass}">
         <header class="menu-header">
           <h1 class="menu-title">${title}</h1>
-          <p class="menu-subtitle">${stage >= 4 ? 'QUANTUM RUN // SIMULATION ACTIVE' : GAME.SUBTITLE}</p>
-          ${save.worldMemory.aiTrust >= 20 ? `<p class="menu-ai-whisper">The grid remembers you.</p>` : ''}
+          <p class="menu-subtitle">${subtitle}</p>
+          ${gridSync >= GRID_SYNC.THRESHOLDS.WHISPERS ? `<p class="menu-ai-whisper">The Grid remembers you.</p>` : ''}
         </header>
 
         <div class="mode-grid">
@@ -1208,6 +1248,30 @@ export class UIManager {
       .fake-ending h2 { font-family: 'Orbitron', sans-serif; color: var(--color-neonCyan); margin-bottom: 12px; }
       .fake-score { font-family: 'Orbitron', sans-serif; font-size: 2rem; color: var(--color-neonGold); }
       @keyframes creditRoll { from { transform: translateY(30vh); } to { transform: translateY(-120vh); } }
+
+      .grid-sync-complete {
+        position: absolute; inset: 0; background: rgba(0, 0, 0, 0.92); z-index: 55;
+        display: flex; align-items: center; justify-content: center; text-align: center;
+        opacity: 0; transition: opacity 1.2s ease-in;
+      }
+      .grid-sync-complete.visible { opacity: 1; }
+      .grid-sync-complete.fade-out { opacity: 0; transition: opacity 1.2s ease-out; }
+      .grid-sync-inner { max-width: 90%; padding: 24px; }
+      .grid-sync-line1 {
+        font-family: 'Orbitron', sans-serif; font-size: 1.4rem; color: var(--color-neonCyan);
+        letter-spacing: 0.2em; margin-bottom: 24px;
+      }
+      .grid-sync-line2, .grid-sync-line3 {
+        font-family: 'Rajdhani', sans-serif; font-size: 1.1rem; color: var(--color-textSecondary);
+        letter-spacing: 0.08em; margin: 8px 0;
+      }
+      .grid-sync-line3 { color: var(--color-neonMagenta); font-weight: 600; }
+      .menu-sync-complete { background: radial-gradient(ellipse at center, rgba(0,240,255,0.06), rgba(10,14,26,0.98)); }
+      .menu-sync-complete .menu-title {
+        color: var(--color-neonCyan);
+        text-shadow: 0 0 30px rgba(0,240,255,0.5);
+        letter-spacing: 0.25em;
+      }
 
       .menu-cracks {
         position: absolute; inset: 0; pointer-events: none; opacity: 0.15;

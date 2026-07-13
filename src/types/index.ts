@@ -133,8 +133,13 @@ export interface WorldMemory {
   lastDeathSeconds: number;
   lastDeathScore: number;
   dimensionLastSeen: Record<string, string>;
+  dimensionsEntered: string[];
   mythsWitnessed: string[];
   aiTrust: number;
+  /** Secret 0–100% Grid synchronization (never shown as a number). */
+  gridSync: number;
+  gridSyncComplete: boolean;
+  earlyQuits: number;
   worldStage: number;
   communityHexIndex: number;
   adaptiveUnlocked: boolean;
@@ -240,4 +245,9 @@ export type EventMap = {
   'community:hex_flash': { fragment: string; index: number };
   'myth:spawn_white': Record<string, never>;
   'ui:impossible_crash': Record<string, never>;
+  'grid:sync_complete': Record<string, never>;
+  'grid:myth': { id: string };
+  'grid:habit_broken': Record<string, never>;
+  'grid:adaptive_unlock': Record<string, never>;
+  'grid:dimension': { id: string };
 };

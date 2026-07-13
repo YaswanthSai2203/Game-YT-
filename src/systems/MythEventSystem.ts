@@ -1,4 +1,4 @@
-import { MYTH_EVENTS, COMMUNITY_HEX, type MythId } from '@/config/sentientConfig';
+import { MYTH_EVENTS, COMMUNITY_HEX, GRID_SYNC, type MythId } from '@/config/sentientConfig';
 import { SaveManager } from '@/core/SaveManager';
 import { EventBus } from '@/core/EventBus';
 import { createRng } from '@/utils/math';
@@ -55,12 +55,20 @@ export class MythEventSystem {
     return this.mythMultiplierActive ? 50 : 1;
   }
 
+  private getRollMultiplier(): number {
+    const sync = this.save.save.worldMemory.gridSync;
+    if (sync >= GRID_SYNC.THRESHOLDS.IMPOSSIBLE) return 1.6;
+    if (sync >= GRID_SYNC.THRESHOLDS.GLITCHES) return 1.15;
+    return 1;
+  }
+
   private tryMythRoll(): void {
     const mem = this.save.save.worldMemory;
+    const mult = this.getRollMultiplier();
     for (const [id, def] of Object.entries(MYTH_EVENTS) as [MythId, typeof MYTH_EVENTS[MythId]][]) {
       if (id === 'impossible_crash' && mem.impossibleSeen) continue;
       if (mem.mythsWitnessed.includes(id) && id !== 'impossible_crash') continue;
-      if (this.rng() > def.roll) continue;
+      if (this.rng() > def.roll * mult) continue;
       this.triggerMyth(id);
       return;
     }
@@ -74,6 +82,7 @@ export class MythEventSystem {
     }
 
     this.events.emit('myth:trigger', { id, silent: MYTH_EVENTS[id].silent });
+    this.events.emit('grid:myth', { id });
 
     switch (id) {
       case 'white_firewall':
