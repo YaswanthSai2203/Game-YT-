@@ -137,6 +137,7 @@ export class Game {
       timeLimit: this.gameScene.getTimeLimit(),
       combo: this.gameScene.getComboDisplay(),
       comboTimer: this.gameScene.getComboTimerRatio(),
+      comboCount: this.gameScene.getComboCount(),
       phase: this.gameScene.getPhaseRatio(),
       powerups: this.gameScene.getPowerupTimers(),
       speed: this.gameScene.getSpeedMultiplier(),

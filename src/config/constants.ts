@@ -97,6 +97,14 @@ export const SCORING = {
   NEAR_MISS_BONUS: 25,
 } as const;
 
+export const HYPE_COMBO_TIERS = [
+  { combo: 5, title: 'NICE!', subtitle: 'Combo chain started', tier: 1 },
+  { combo: 10, title: 'ON FIRE!', subtitle: 'Sync accelerating', tier: 2 },
+  { combo: 15, title: 'UNSTOPPABLE!', subtitle: 'They cannot touch you', tier: 3 },
+  { combo: 20, title: 'GOD MODE', subtitle: 'Maximum multiplier', tier: 4 },
+  { combo: 30, title: 'QUANTUM FLOW', subtitle: 'Legendary sync', tier: 5 },
+] as const;
+
 export const DIFFICULTY = {
   SPAWN_INTERVAL_BASE: 1.2,
   SPAWN_INTERVAL_MIN: 0.35,

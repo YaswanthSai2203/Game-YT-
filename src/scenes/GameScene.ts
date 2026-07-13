@@ -2,7 +2,7 @@ import { Container } from 'pixi.js';
 import type { GameConfig, PowerupType, RunStats } from '@/types';
 import { BaseScene } from './BaseScene';
 import {
-  COLORS, PLAYER, LANES, SCORING, POWERUP, MODE_CONFIG,
+  COLORS, PLAYER, LANES, SCORING, POWERUP, MODE_CONFIG, HYPE_COMBO_TIERS,
 } from '@/config/constants';
 import { EventBus } from '@/core/EventBus';
 import { AudioManager } from '@/core/AudioManager';
@@ -76,6 +76,8 @@ export class GameScene extends BaseScene {
   private nearMissChecked = new Set<number>();
   private milestonesHit = new Set<number>();
   private speedTiersHit = new Set<number>();
+  private comboHypeHit = new Set<number>();
+  private challengeComplete = false;
   private runCredits = 0;
   private phaseCooldownBase: number = PLAYER.PHASE_COOLDOWN;
 
@@ -218,6 +220,8 @@ export class GameScene extends BaseScene {
     this.nearMissChecked.clear();
     this.milestonesHit.clear();
     this.speedTiersHit.clear();
+    this.comboHypeHit.clear();
+    this.challengeComplete = false;
     this.runCredits = 0;
 
     if (this.upgrades.hasStartShield()) {
@@ -459,8 +463,7 @@ export class GameScene extends BaseScene {
           this.collectShard(entity.id, SCORING.SHARD_BASE);
           break;
         case 'vault':
-          this.collectShard(entity.id, SCORING.VAULT_BONUS);
-          this.particles.burst(ex, ey, COLORS.gold, 30, 350);
+          this.collectShard(entity.id, SCORING.VAULT_BONUS, true);
           break;
         case 'powerup':
           this.collectPowerup(entity.id, entity.powerupType!);
@@ -488,8 +491,9 @@ export class GameScene extends BaseScene {
         this.addScore(SCORING.NEAR_MISS_BONUS);
         this.popScore(this.playerX, this.playerY - 30, SCORING.NEAR_MISS_BONUS, COLORS.gold);
         this.audio.playNearMiss();
-        this.events.emit('ui:toast', { message: `NEAR MISS +${SCORING.NEAR_MISS_BONUS}`, type: 'bonus' });
-        this.particles.burst(this.playerX, this.playerY - 20, COLORS.gold, 6, 120);
+        this.events.emit('ui:hype', { title: 'EDGE RUNNER!', subtitle: `+${SCORING.NEAR_MISS_BONUS} near miss`, tier: 2, color: 'gold' });
+        this.shakeAmount = Math.max(this.shakeAmount, 5);
+        this.particles.burst(this.playerX, this.playerY - 20, COLORS.gold, 12, 180);
       } else {
         this.nearMissChecked.add(entity.id);
       }
@@ -497,37 +501,41 @@ export class GameScene extends BaseScene {
   }
 
   private checkMilestones(): void {
-    const checks: [number, string][] = [
-      [30, '⚡ 30 SECONDS — KEEP SYNCING'],
-      [60, '🔥 1 MINUTE — ON FIRE'],
-      [90, '💎 ELITE RUNNER'],
-      [120, '🏆 QUANTUM MASTER'],
+    const checks: [number, string, string, number][] = [
+      [30, '30 SECONDS', 'Keep syncing — you are warming up', 1],
+      [60, '1 MINUTE', 'You are officially ON FIRE', 2],
+      [90, 'ELITE RUNNER', 'The grid bends to your will', 3],
+      [120, 'QUANTUM MASTER', 'Transcendent sync achieved', 4],
     ];
-    for (const [sec, label] of checks) {
+    for (const [sec, title, subtitle, tier] of checks) {
       if (this.timeAlive >= sec && !this.milestonesHit.has(sec)) {
         this.milestonesHit.add(sec);
-        this.events.emit('milestone:reach', { label });
-        this.events.emit('ui:toast', { message: label, type: 'milestone' });
+        this.events.emit('milestone:reach', { label: title });
+        this.events.emit('ui:hype', { title, subtitle, tier, color: 'violet' });
+        this.audio.playHype(tier);
+        if (tier >= 2) this.shakeAmount = Math.max(this.shakeAmount, tier * 2);
       }
     }
   }
 
   private checkSpeedTiers(): void {
     const mult = this.spawner.getSpeedMultiplier();
-    const tiers: [number, string][] = [
-      [1.3, '⚡ VELOCITY ×1.3'],
-      [1.6, '⚡ VELOCITY ×1.6'],
-      [2.0, '🔥 VELOCITY ×2.0'],
-      [2.5, '💨 VELOCITY ×2.5'],
-      [3.0, '🚀 MAX OVERDRIVE'],
+    const tiers: [number, string, string, number][] = [
+      [1.3, 'VELOCITY SURGE', 'Speed ×1.3', 1],
+      [1.6, 'HYPER DRIVE', 'Speed ×1.6', 2],
+      [2.0, 'OVERDRIVE', 'Speed ×2.0 — hang on!', 3],
+      [2.5, 'WARP SPEED', 'Speed ×2.5', 4],
+      [3.0, 'MAX OVERDRIVE', 'Absolute terminal velocity', 5],
     ];
-    for (const [threshold, label] of tiers) {
+    for (const [threshold, title, subtitle, tier] of tiers) {
       const key = Math.round(threshold * 10);
       if (mult >= threshold && !this.speedTiersHit.has(key)) {
         this.speedTiersHit.add(key);
-        this.events.emit('ui:toast', { message: label, type: 'milestone' });
+        this.events.emit('ui:hype', { title, subtitle, tier, color: 'cyan' });
+        this.audio.playHype(tier);
         if (!this.save.settings.reducedMotion) {
-          this.shakeAmount = Math.max(this.shakeAmount, 4);
+          this.shakeAmount = Math.max(this.shakeAmount, tier * 2);
+          this.events.emit('ui:flash', { color: 'rgba(0,240,255,0.15)', duration: 120 });
         }
       }
     }
@@ -561,7 +569,7 @@ export class GameScene extends BaseScene {
     this.endGame(true);
   }
 
-  private collectShard(entityId: number, baseValue: number): void {
+  private collectShard(entityId: number, baseValue: number, isVault = false): void {
     this.spawner.removeEntity(entityId);
     this.shards++;
     this.runCredits += 1;
@@ -570,14 +578,59 @@ export class GameScene extends BaseScene {
     const points = Math.floor(boosted * this.combo.getMultiplier());
     this.addScore(points, this.laneCenters[this.playerLane], this.playerY - 30);
     this.audio.playShardCollect(this.combo.getCombo());
-    if (this.combo.getCombo() === 5) {
-      this.events.emit('ui:toast', { message: '🔗 COMBO ×3.0 — NICE!', type: 'combo' });
+
+    if (isVault) {
+      this.events.emit('ui:hype', { title: 'VAULT JACKPOT!', subtitle: `+${points.toLocaleString()}`, tier: 5, color: 'gold' });
+      this.audio.playVaultJackpot();
+      this.shakeAmount = Math.max(this.shakeAmount, 14);
+      this.events.emit('ui:flash', { color: 'rgba(255,215,0,0.35)', duration: 250 });
+      if (!this.save.settings.reducedMotion) {
+        this.particles.burst(this.laneCenters[this.playerLane], this.playerY - 30, COLORS.gold, 40, 420);
+      }
+    } else {
+      this.checkComboHype();
+      if (this.combo.getCombo() > 1 && this.combo.getCombo() % 5 === 0) {
+        this.audio.playComboUp();
+      }
+      this.particles.burst(this.laneCenters[this.playerLane], this.playerY - 30, COLORS.cyan, 8 + Math.min(this.combo.getCombo(), 12), 150);
     }
-    if (this.combo.getCombo() > 1 && this.combo.getCombo() % 5 === 0) {
-      this.audio.playComboUp();
-    }
+
     this.events.emit('shard:collect', { value: points, combo: this.combo.getCombo() });
-    this.particles.burst(this.laneCenters[this.playerLane], this.playerY - 30, COLORS.cyan, 8, 150);
+  }
+
+  private checkComboHype(): void {
+    const c = this.combo.getCombo();
+    for (const tier of HYPE_COMBO_TIERS) {
+      if (c < tier.combo || this.comboHypeHit.has(tier.combo)) continue;
+      this.comboHypeHit.add(tier.combo);
+      this.events.emit('ui:hype', {
+        title: tier.title,
+        subtitle: tier.subtitle,
+        tier: tier.tier,
+        color: tier.tier >= 4 ? 'magenta' : tier.tier >= 2 ? 'gold' : 'cyan',
+      });
+      this.audio.playHype(tier.tier);
+      this.shakeAmount = Math.max(this.shakeAmount, tier.tier * 2.5);
+      if (tier.tier >= 3 && !this.save.settings.reducedMotion) {
+        this.particles.burst(this.playerX, this.playerY, COLORS.gold, 16 + tier.tier * 4, 280);
+        this.events.emit('ui:flash', { color: 'rgba(0,240,255,0.2)', duration: 150 });
+      }
+    }
+  }
+
+  private checkChallengeVictory(): void {
+    const target = this.config.targetScore ?? 0;
+    if (target <= 0 || this.challengeComplete || this.score < target) return;
+    this.challengeComplete = true;
+    this.events.emit('ui:hype', {
+      title: 'TARGET SYNCED!',
+      subtitle: 'Daily challenge crushed — keep pushing!',
+      tier: 5,
+      color: 'cyan',
+    });
+    this.audio.playHype(5);
+    this.shakeAmount = Math.max(this.shakeAmount, 10);
+    this.events.emit('ui:flash', { color: 'rgba(0,255,136,0.3)', duration: 300 });
   }
 
   private collectPowerup(entityId: number, type: PowerupType): void {
@@ -588,6 +641,18 @@ export class GameScene extends BaseScene {
     this.audio.playPowerup();
     this.events.emit('powerup:activate', { type });
     this.particles.burst(this.playerX, this.playerY, COLORS.gold, 14, 200);
+
+    const hypeMap: Partial<Record<PowerupType, { title: string; subtitle: string; tier: number }>> = {
+      overclock: { title: 'OVERCLOCK!', subtitle: '2× score multiplier', tier: 3 },
+      chronos: { title: 'CHRONOS!', subtitle: 'Time slows for you', tier: 3 },
+      magnet: { title: 'MAGNET SYNC!', subtitle: 'Shards drawn to core', tier: 2 },
+      shield: { title: 'SHIELD UP!', subtitle: 'One hit absorbed', tier: 2 },
+    };
+    const hype = hypeMap[type];
+    if (hype) {
+      this.events.emit('ui:hype', { ...hype, color: 'violet' });
+      this.audio.playHype(hype.tier);
+    }
   }
 
   private addScore(delta: number, popupX?: number, popupY?: number): void {
@@ -596,6 +661,7 @@ export class GameScene extends BaseScene {
     const finalDelta = Math.floor(delta * overclock);
     this.score += finalDelta;
     this.events.emit('score:change', { score: this.score, delta: finalDelta });
+    this.checkChallengeVictory();
     if (popupX !== undefined && popupY !== undefined) {
       this.popScore(popupX, popupY, finalDelta, overclock > 1 ? COLORS.gold : COLORS.cyan);
     }
@@ -680,6 +746,9 @@ export class GameScene extends BaseScene {
     const combo = this.combo.getCombo();
     if (combo <= 1) return '';
     return `COMBO ×${this.combo.getMultiplier().toFixed(1)}`;
+  }
+  getComboCount(): number {
+    return this.combo.getCombo();
   }
   getComboTimerRatio(): number {
     return this.combo.getCombo() > 1 ? this.combo.getTimerRatio() : 0;

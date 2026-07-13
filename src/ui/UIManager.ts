@@ -63,9 +63,15 @@ export class UIManager {
     this.events.on('ui:flash', (d) => this.flashScreen(d.color, d.duration));
     this.events.on('combo:break', (d) => {
       this.audio.playComboBreak();
-      if (d.previousCombo >= 5) {
+      if (d.previousCombo >= 10) {
+        this.showHypeCallout({ title: 'SYNC LOST', subtitle: `Combo was ×${d.previousCombo}`, tier: 1, color: 'magenta' });
+      } else if (d.previousCombo >= 5) {
         this.showToast(`COMBO LOST — was ×${d.previousCombo}`, 'combo');
       }
+    });
+    this.events.on('ui:hype', (d) => this.showHypeCallout(d));
+    this.events.on('score:change', (d) => {
+      if (d.delta >= 50) this.punchScore(d.delta);
     });
 
     this.events.on('settings:change', () => this.applyTheme());
@@ -147,6 +153,7 @@ export class UIManager {
     timeLimit: number;
     combo: string;
     comboTimer?: number;
+    comboCount?: number;
     phase: number;
     powerups: { type: string; ratio: number }[];
     speed?: number;
@@ -206,6 +213,74 @@ export class UIManager {
     } else if (challengeRow) {
       challengeRow.classList.add('hidden');
     }
+
+    const vignette = this.overlay.querySelector('#hype-vignette');
+    const comboCount = stats.comboCount ?? 0;
+    if (vignette) {
+      vignette.classList.toggle('active', comboCount >= 5);
+      vignette.classList.toggle('intense', comboCount >= 15);
+      vignette.classList.toggle('max', comboCount >= 25);
+    }
+    if (comboEl && comboCount >= 10) {
+      comboEl.classList.add('combo-blazing');
+    } else if (comboEl) {
+      comboEl.classList.remove('combo-blazing');
+    }
+  }
+
+  private showHypeCallout(data: { title: string; subtitle?: string; tier?: number; color?: string }): void {
+    if (this.save.settings.reducedMotion) {
+      this.showToast(`${data.title}${data.subtitle ? ` — ${data.subtitle}` : ''}`, 'milestone');
+      return;
+    }
+
+    let layer = this.root.querySelector('#hype-layer') as HTMLElement | null;
+    if (!layer) {
+      layer = document.createElement('div');
+      layer.id = 'hype-layer';
+      this.root.appendChild(layer);
+    }
+
+    const tier = data.tier ?? 1;
+    const colorClass = data.color ? `hype-color-${data.color}` : 'hype-color-cyan';
+    const el = document.createElement('div');
+    el.className = `hype-callout ${colorClass} hype-tier-${tier}`;
+    el.innerHTML = `
+      <div class="hype-burst"></div>
+      <div class="hype-title">${data.title}</div>
+      ${data.subtitle ? `<div class="hype-subtitle">${data.subtitle}</div>` : ''}
+    `;
+    layer.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('visible'));
+    setTimeout(() => {
+      el.classList.remove('visible');
+      setTimeout(() => el.remove(), 450);
+    }, 900 + tier * 180);
+  }
+
+  private punchScore(delta: number): void {
+    const scoreEl = this.overlay.querySelector('#hud-score');
+    if (!scoreEl) return;
+    scoreEl.classList.remove('score-punch');
+    void (scoreEl as HTMLElement).offsetWidth;
+    scoreEl.classList.add('score-punch');
+    if (delta >= 200) {
+      this.showToast(`+${formatScore(delta)}`, 'bonus');
+    }
+  }
+
+  private spawnConfetti(): void {
+    if (this.save.settings.reducedMotion) return;
+    for (let i = 0; i < 50; i++) {
+      const p = document.createElement('div');
+      p.className = 'confetti-piece';
+      p.style.left = `${Math.random() * 100}%`;
+      p.style.animationDelay = `${Math.random() * 0.6}s`;
+      p.style.animationDuration = `${1.8 + Math.random()}s`;
+      p.style.background = ['#00f0ff', '#ff006e', '#ffd700', '#8b5cf6', '#00ff88'][i % 5];
+      this.overlay.appendChild(p);
+      setTimeout(() => p.remove(), 3500);
+    }
   }
 
   runCountdown(): Promise<void> {
@@ -229,6 +304,9 @@ export class UIManager {
         void overlay.offsetWidth;
         overlay.classList.add('pulse');
         this.audio.playCountdownTick(isFinal);
+        if (isFinal) {
+          this.showHypeCallout({ title: 'GO!', subtitle: 'SYNC NOW', tier: 2, color: 'cyan' });
+        }
         i++;
         setTimeout(tick, isFinal ? 450 : 650);
       };
@@ -369,6 +447,7 @@ export class UIManager {
   private renderHUD(): void {
     this.overlay.className = 'screen screen-hud';
     this.overlay.innerHTML = `
+      <div id="hype-vignette" class="hype-vignette"></div>
       <div class="hud-top">
         <div class="hud-score-group">
           <span class="hud-label">SCORE</span>
@@ -559,6 +638,13 @@ export class UIManager {
         this.showToast('Score copied to clipboard!');
       }
     });
+
+    if (data.newHighScore || (data.rankPercentile ?? 0) >= 85) {
+      this.spawnConfetti();
+      if (data.newHighScore) {
+        this.showHypeCallout({ title: 'NEW RECORD!', subtitle: formatScore(data.score), tier: 5, color: 'gold' });
+      }
+    }
   }
 
   private renderSettings(): void {
@@ -800,6 +886,73 @@ export class UIManager {
       .countdown-overlay.pulse .countdown-num { animation: countdownPop 0.5s ease-out; }
       body.reduced-motion .countdown-overlay.pulse .countdown-num { animation: none; }
       @keyframes countdownPop { from { transform: scale(1.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+      #hype-layer {
+        position: absolute; inset: 0; pointer-events: none; z-index: 18;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .hype-callout {
+        position: absolute; text-align: center; opacity: 0; transform: scale(2.2);
+        transition: opacity 0.15s ease-out, transform 0.35s cubic-bezier(0.2, 1.4, 0.3, 1);
+      }
+      .hype-callout.visible { opacity: 1; transform: scale(1); }
+      .hype-title {
+        font-family: 'Orbitron', sans-serif; font-weight: 900; letter-spacing: 0.08em;
+        text-shadow: 0 0 30px currentColor, 0 0 60px currentColor;
+        line-height: 1.1;
+      }
+      .hype-subtitle {
+        font-family: 'Rajdhani', sans-serif; font-size: 1rem; font-weight: 600;
+        margin-top: 8px; opacity: 0.85; letter-spacing: 0.12em;
+      }
+      .hype-tier-1 .hype-title { font-size: 2rem; }
+      .hype-tier-2 .hype-title { font-size: 2.4rem; }
+      .hype-tier-3 .hype-title { font-size: 2.8rem; }
+      .hype-tier-4 .hype-title { font-size: 3.2rem; }
+      .hype-tier-5 .hype-title { font-size: 3.6rem; }
+      .hype-color-cyan .hype-title { color: var(--color-neonCyan); }
+      .hype-color-gold .hype-title { color: var(--color-neonGold); }
+      .hype-color-magenta .hype-title { color: var(--color-neonMagenta); }
+      .hype-color-violet .hype-title { color: var(--color-neonViolet); }
+      .hype-burst {
+        position: absolute; inset: -40px; border-radius: 50%;
+        background: radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 70%);
+        animation: hypeBurst 0.6s ease-out forwards;
+      }
+      body.reduced-motion .hype-burst { animation: none; }
+      @keyframes hypeBurst { from { transform: scale(0.3); opacity: 1; } to { transform: scale(2); opacity: 0; } }
+
+      .hype-vignette {
+        position: absolute; inset: 0; pointer-events: none; z-index: 1; opacity: 0;
+        box-shadow: inset 0 0 60px rgba(255,215,0,0.15);
+        transition: opacity 0.4s;
+      }
+      .hype-vignette.active { opacity: 1; animation: vignettePulse 1.2s ease-in-out infinite; }
+      .hype-vignette.intense { box-shadow: inset 0 0 90px rgba(255,215,0,0.35), inset 0 0 30px rgba(0,240,255,0.2); }
+      .hype-vignette.max { box-shadow: inset 0 0 120px rgba(255,0,110,0.4), inset 0 0 50px rgba(255,215,0,0.35); animation-duration: 0.7s; }
+      body.reduced-motion .hype-vignette.active { animation: none; }
+      @keyframes vignettePulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+
+      .hud-score.score-punch { animation: scorePunch 0.35s ease-out; color: var(--color-neonGold); }
+      body.reduced-motion .hud-score.score-punch { animation: none; }
+      @keyframes scorePunch { 0% { transform: scale(1); } 40% { transform: scale(1.35); } 100% { transform: scale(1); } }
+
+      .hud-combo.combo-blazing {
+        animation: comboBlaze 0.8s ease-in-out infinite;
+        text-shadow: 0 0 12px var(--color-neonGold), 0 0 24px var(--color-neonMagenta);
+      }
+      body.reduced-motion .hud-combo.combo-blazing { animation: none; }
+      @keyframes comboBlaze { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+
+      .confetti-piece {
+        position: absolute; top: -10px; width: 8px; height: 14px; opacity: 0.9;
+        animation: confettiFall linear forwards; pointer-events: none; z-index: 25;
+      }
+      body.reduced-motion .confetti-piece { display: none; }
+      @keyframes confettiFall {
+        0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(110vh) rotate(720deg); opacity: 0.3; }
+      }
 
       .animate-in { animation: fadeScaleIn 0.4s ease-out; }
       body.reduced-motion .animate-in { animation: none; }
