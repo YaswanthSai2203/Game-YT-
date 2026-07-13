@@ -131,24 +131,29 @@ export class Game {
   };
 
   private updateHUDFromGame(): void {
-    const combo = this.gameScene.getActivePowerups();
     this.ui.updateHUD({
       score: this.gameScene.getScore(),
       timeAlive: this.gameScene.getTimeAlive(),
       timeLimit: this.gameScene.getTimeLimit(),
       combo: this.gameScene.getComboDisplay(),
+      comboTimer: this.gameScene.getComboTimerRatio(),
       phase: this.gameScene.getPhaseRatio(),
-      powerups: combo.map((p) => p.type),
+      powerups: this.gameScene.getPowerupTimers(),
       speed: this.gameScene.getSpeedMultiplier(),
       speedRatio: this.gameScene.getSpeedRatio(),
+      targetScore: this.gameScene.getTargetScore(),
     });
   }
 
   private startGame(mode: GameMode): void {
+    void this.startGameWithCountdown(mode);
+  }
+
+  private async startGameWithCountdown(mode: GameMode): Promise<void> {
     this.audio.resume();
     this.currentMode = mode;
     this.isPaused = false;
-    this.input.setEnabled(true);
+    this.input.setEnabled(false);
     this.setCanvasVisible(true);
 
     const config: GameConfig = { mode };
@@ -163,12 +168,20 @@ export class Game {
     this.app.canvas.setAttribute('tabindex', '0');
     this.app.canvas.style.outline = 'none';
     requestAnimationFrame(() => this.app.canvas.focus());
+
+    this.input.setEnabled(false);
+    this.gameScene.setCountdownActive(true);
+    await this.ui.runCountdown();
+    this.gameScene.setCountdownActive(false);
+    this.input.setEnabled(true);
+    requestAnimationFrame(() => this.app.canvas.focus());
   }
 
   private pauseGame(): void {
     this.isPaused = true;
     this.gameScene.setPaused(true);
     this.input.setEnabled(false);
+    this.audio.setPaused(true);
     this.ui.showPause();
   }
 
@@ -176,14 +189,15 @@ export class Game {
     this.isPaused = false;
     this.gameScene.setPaused(false);
     this.input.setEnabled(true);
+    this.audio.setPaused(false);
     requestAnimationFrame(() => this.app.canvas.focus());
   }
 
   private handleGameOver(stats: RunStats): void {
     this.input.setEnabled(false);
     this.setCanvasVisible(false);
-    const { newHighScore, xpGained, creditsEarned } = this.save.recordRun(stats);
-    this.ui.showScreen('gameover', { ...stats, newHighScore, xpGained, creditsEarned });
+    const { newHighScore, xpGained, creditsEarned, syncUnlocks } = this.save.recordRun(stats);
+    this.ui.showScreen('gameover', { ...stats, newHighScore, xpGained, creditsEarned, syncUnlocks });
   }
 
   private goToMenu(): void {
@@ -203,6 +217,9 @@ export class Game {
 
   private onResize = (): void => {
     this.app.renderer.resize(window.innerWidth, window.innerHeight);
+    if (this.scenes.getCurrentId() === 'game') {
+      this.gameScene.onResize();
+    }
   };
 
   private onPauseKey = (e: KeyboardEvent): void => {

@@ -1,4 +1,4 @@
-import { Container, Text, TextStyle } from 'pixi.js';
+import { Container } from 'pixi.js';
 import type { GameConfig, PowerupType, RunStats } from '@/types';
 import { BaseScene } from './BaseScene';
 import {
@@ -13,11 +13,12 @@ import { estimateRankPercentile } from '@/core/SaveManager';
 import { SpawnerSystem } from '@/systems/SpawnerSystem';
 import { ComboSystem } from '@/systems/ComboSystem';
 import { ParticleSystem } from '@/systems/ParticleSystem';
+import { FloatingTextSystem } from '@/systems/FloatingTextSystem';
 import {
   createPlayerCore, createFirewall, createShard,
   createPowerupIcon, createGridBackground, getCoreColor,
 } from '@/graphics/ProceduralAssets';
-import { clamp, easeOutCubic, circleRectOverlap } from '@/utils/math';
+import { clamp, easeOutCubic, circleRectOverlap, lerp } from '@/utils/math';
 
 interface ActivePowerup {
   type: PowerupType;
@@ -36,6 +37,7 @@ export class GameScene extends BaseScene {
   private spawner!: SpawnerSystem;
   private combo!: ComboSystem;
   private particles!: ParticleSystem;
+  private floatingText!: FloatingTextSystem;
 
   private gameWidth = 0;
   private gameHeight = 0;
@@ -67,9 +69,8 @@ export class GameScene extends BaseScene {
   private timeLimit = 0;
   private gameOver = false;
   private paused = false;
+  private countdownActive = false;
 
-  private scoreText!: Text;
-  private comboText!: Text;
   private gridBg!: Container;
   private shakeAmount = 0;
   private nearMissChecked = new Set<number>();
@@ -140,6 +141,23 @@ export class GameScene extends BaseScene {
     this.paused = value;
   }
 
+  setCountdownActive(value: boolean): void {
+    this.countdownActive = value;
+  }
+
+  onResize(): void {
+    if (this.gameOver) return;
+    this.gameWidth = window.innerWidth;
+    this.gameHeight = window.innerHeight;
+    this.laneCenters = [this.gameWidth * 0.2, this.gameWidth * 0.5, this.gameWidth * 0.8];
+    this.playerY = this.gameHeight * 0.78;
+    this.playerX = this.laneCenters[this.playerLane];
+    if (this.playerContainer) {
+      this.playerContainer.x = this.playerX;
+      this.playerContainer.y = this.playerY;
+    }
+  }
+
   private resetGame(): void {
     this.container.removeChildren();
     this.entityGraphics.clear();
@@ -161,6 +179,7 @@ export class GameScene extends BaseScene {
       this.container,
       this.save.settings.reducedMotion,
     );
+    this.floatingText = new FloatingTextSystem(this.container);
 
     const seed = this.config.seed
       ?? (this.config.mode === 'challenge' ? this.save.save.daily.todaySeed : undefined);
@@ -208,32 +227,6 @@ export class GameScene extends BaseScene {
 
     const modeConf = MODE_CONFIG[this.config.mode];
     this.timeLimit = this.config.timeLimit ?? modeConf.timeLimit ?? 0;
-
-    this.scoreText = new Text({
-      text: '0',
-      style: new TextStyle({
-        fontFamily: 'Orbitron',
-        fontSize: 28,
-        fill: COLORS.white,
-        fontWeight: '800',
-      }),
-    });
-    this.scoreText.x = 16;
-    this.scoreText.y = 16;
-    this.container.addChild(this.scoreText);
-
-    this.comboText = new Text({
-      text: '',
-      style: new TextStyle({
-        fontFamily: 'Orbitron',
-        fontSize: 18,
-        fill: COLORS.gold,
-        fontWeight: '600',
-      }),
-    });
-    this.comboText.x = 16;
-    this.comboText.y = 52;
-    this.container.addChild(this.comboText);
   }
 
   private moveLane(direction: number): void {
@@ -259,12 +252,11 @@ export class GameScene extends BaseScene {
       this.phaseShifts++;
       this.audio.playPhaseShift();
       this.particles.burst(this.playerX, this.playerY, COLORS.violet, 16, 250);
-      this.playerContainer.alpha = 0.5;
     }
   }
 
   override update(dt: number): void {
-    if (this.gameOver || this.paused) return;
+    if (this.gameOver || this.paused || this.countdownActive) return;
 
     const timeScale = this.activePowerups.some((p) => p.type === 'chronos')
       ? POWERUP.CHRONOS_FACTOR : 1;
@@ -282,6 +274,7 @@ export class GameScene extends BaseScene {
     this.spawner.update(scaledDt, this.gameHeight);
     this.combo.update(dt);
     this.particles.update(dt);
+    this.floatingText.update(dt);
     this.updatePowerups(dt);
     this.updatePhase(dt);
     this.syncEntities();
@@ -290,8 +283,8 @@ export class GameScene extends BaseScene {
     this.checkMilestones();
     this.checkSpeedTiers();
     this.updateGrid(scaledDt);
-    this.updateHUD();
     this.applyScreenShake();
+    this.updatePlayerVisuals();
 
     const intensity = this.spawner.getSpeedRatio();
     this.audio.setIntensity(intensity);
@@ -321,12 +314,34 @@ export class GameScene extends BaseScene {
     this.playerContainer.scale.set(this.playerScale);
   }
 
+  private updatePlayerVisuals(): void {
+    const chronos = this.activePowerups.some((p) => p.type === 'chronos');
+    const overclock = this.activePowerups.some((p) => p.type === 'overclock');
+    if (this.phaseActive) {
+      this.playerContainer.alpha = 0.55;
+      this.playerContainer.tint = COLORS.violet;
+    } else if (this.hasShield) {
+      this.playerContainer.alpha = 1;
+      this.playerContainer.tint = COLORS.green;
+    } else if (overclock) {
+      this.playerContainer.tint = COLORS.gold;
+    } else if (chronos) {
+      this.playerContainer.tint = COLORS.cyan;
+    } else {
+      this.playerContainer.alpha = 1;
+      this.playerContainer.tint = 0xffffff;
+    }
+  }
+
+  private popScore(x: number, y: number, delta: number, color: number = COLORS.cyan): void {
+    this.floatingText.spawn(x, y, `+${delta}`, color, delta >= 100 ? 22 : 16);
+  }
+
   private updatePhase(dt: number): void {
     if (this.phaseActive) {
       this.phaseTimer -= dt;
       if (this.phaseTimer <= 0) {
         this.phaseActive = false;
-        this.playerContainer.alpha = 1;
       }
     }
     if (this.phaseCooldown > 0) {
@@ -348,6 +363,8 @@ export class GameScene extends BaseScene {
 
   private syncEntities(): void {
     const activeIds = new Set<number>();
+    const magnetActive = this.activePowerups.some((p) => p.type === 'magnet');
+    const magnetRange = POWERUP.MAGNET_RANGE * this.upgrades.getMagnetRangeMultiplier();
 
     for (const entity of this.spawner.getEntities()) {
       if (!entity.active) continue;
@@ -376,8 +393,20 @@ export class GameScene extends BaseScene {
         this.entityGraphics.set(entity.id, graphic);
       }
 
-      graphic.x = this.laneCenters[entity.lane];
-      graphic.y = entity.y;
+      let ex = this.laneCenters[entity.lane];
+      let ey = entity.y;
+
+      if (magnetActive && (entity.type === 'shard' || entity.type === 'vault')) {
+        const dist = Math.hypot(ex - this.playerX, ey - this.playerY);
+        if (dist < magnetRange) {
+          ex = lerp(ex, this.playerX, 0.12);
+          ey = lerp(ey, this.playerY, 0.12);
+          entity.y = ey;
+        }
+      }
+
+      graphic.x = ex;
+      graphic.y = ey;
 
       if (entity.type === 'shard' || entity.type === 'vault') {
         graphic.rotation += 0.02;
@@ -457,6 +486,8 @@ export class GameScene extends BaseScene {
         this.nearMissChecked.add(entity.id);
         this.nearMisses++;
         this.addScore(SCORING.NEAR_MISS_BONUS);
+        this.popScore(this.playerX, this.playerY - 30, SCORING.NEAR_MISS_BONUS, COLORS.gold);
+        this.audio.playNearMiss();
         this.events.emit('ui:toast', { message: `NEAR MISS +${SCORING.NEAR_MISS_BONUS}`, type: 'bonus' });
         this.particles.burst(this.playerX, this.playerY - 20, COLORS.gold, 6, 120);
       } else {
@@ -505,7 +536,7 @@ export class GameScene extends BaseScene {
   private handleFirewallHit(entityId: number): void {
     if (this.phaseActive) {
       this.spawner.removeEntity(entityId);
-      this.addScore(SCORING.PHASE_BONUS);
+      this.addScore(SCORING.PHASE_BONUS, this.playerX, this.playerY - 20);
       this.particles.burst(this.playerX, this.playerY, COLORS.violet, 20, 300);
       return;
     }
@@ -516,6 +547,8 @@ export class GameScene extends BaseScene {
       this.spawner.removeEntity(entityId);
       this.particles.burst(this.playerX, this.playerY, COLORS.green, 16, 250);
       this.shakeAmount = 8;
+      this.events.emit('ui:flash', { color: 'rgba(0,255,136,0.35)', duration: 200 });
+      this.audio.playShieldBreak();
       return;
     }
 
@@ -535,7 +568,7 @@ export class GameScene extends BaseScene {
     this.combo.hit();
     const boosted = Math.floor(baseValue * this.upgrades.getShardMultiplier());
     const points = Math.floor(boosted * this.combo.getMultiplier());
-    this.addScore(points);
+    this.addScore(points, this.laneCenters[this.playerLane], this.playerY - 30);
     this.audio.playShardCollect(this.combo.getCombo());
     if (this.combo.getCombo() === 5) {
       this.events.emit('ui:toast', { message: '🔗 COMBO ×3.0 — NICE!', type: 'combo' });
@@ -557,12 +590,15 @@ export class GameScene extends BaseScene {
     this.particles.burst(this.playerX, this.playerY, COLORS.gold, 14, 200);
   }
 
-  private addScore(delta: number): void {
+  private addScore(delta: number, popupX?: number, popupY?: number): void {
     const overclock = this.activePowerups.some((p) => p.type === 'overclock')
       ? POWERUP.OVERCLOCK_MULTIPLIER : 1;
     const finalDelta = Math.floor(delta * overclock);
     this.score += finalDelta;
     this.events.emit('score:change', { score: this.score, delta: finalDelta });
+    if (popupX !== undefined && popupY !== undefined) {
+      this.popScore(popupX, popupY, finalDelta, overclock > 1 ? COLORS.gold : COLORS.cyan);
+    }
   }
 
   private endGame(fromDeath: boolean): void {
@@ -572,6 +608,7 @@ export class GameScene extends BaseScene {
     if (fromDeath) {
       this.audio.playHit();
       this.shakeAmount = 20;
+      this.events.emit('ui:flash', { color: 'rgba(255,0,110,0.45)', duration: 350 });
       if (!this.save.settings.reducedMotion) {
         this.particles.burst(this.playerX, this.playerY, COLORS.magenta, 40, 400);
       }
@@ -609,17 +646,6 @@ export class GameScene extends BaseScene {
     }
   }
 
-  private updateHUD(): void {
-    this.scoreText.text = this.score.toLocaleString();
-    const combo = this.combo.getCombo();
-    if (combo > 1) {
-      this.comboText.text = `COMBO ×${this.combo.getMultiplier().toFixed(1)}`;
-      this.comboText.alpha = 0.5 + this.combo.getTimerRatio() * 0.5;
-    } else {
-      this.comboText.text = '';
-    }
-  }
-
   private applyScreenShake(): void {
     if (this.shakeAmount > 0 && !this.save.settings.reducedMotion) {
       this.container.x = (Math.random() - 0.5) * this.shakeAmount;
@@ -654,6 +680,18 @@ export class GameScene extends BaseScene {
     const combo = this.combo.getCombo();
     if (combo <= 1) return '';
     return `COMBO ×${this.combo.getMultiplier().toFixed(1)}`;
+  }
+  getComboTimerRatio(): number {
+    return this.combo.getCombo() > 1 ? this.combo.getTimerRatio() : 0;
+  }
+  getTargetScore(): number {
+    return this.config.targetScore ?? 0;
+  }
+  getPowerupTimers(): { type: PowerupType; ratio: number }[] {
+    return this.activePowerups.map((p) => ({
+      type: p.type,
+      ratio: p.timer / POWERUP.DURATION[p.type],
+    }));
   }
   getSpeedMultiplier(): number {
     return this.spawner.getSpeedMultiplier();

@@ -60,6 +60,13 @@ export class UIManager {
       if (d.step < 0) this.hideTutorial();
       else this.showTutorial();
     });
+    this.events.on('ui:flash', (d) => this.flashScreen(d.color, d.duration));
+    this.events.on('combo:break', (d) => {
+      this.audio.playComboBreak();
+      if (d.previousCombo >= 5) {
+        this.showToast(`COMBO LOST — was ×${d.previousCombo}`, 'combo');
+      }
+    });
 
     this.events.on('settings:change', () => this.applyTheme());
   }
@@ -134,14 +141,30 @@ export class UIManager {
     this.overlay.querySelectorAll('.modal-layer').forEach((el) => el.remove());
   }
 
-  updateHUD(stats: { score: number; timeAlive: number; timeLimit: number; combo: string; phase: number; powerups: string[]; speed?: number; speedRatio?: number }): void {
+  updateHUD(stats: {
+    score: number;
+    timeAlive: number;
+    timeLimit: number;
+    combo: string;
+    comboTimer?: number;
+    phase: number;
+    powerups: { type: string; ratio: number }[];
+    speed?: number;
+    speedRatio?: number;
+    targetScore?: number;
+  }): void {
     const scoreEl = this.overlay.querySelector('#hud-score');
     const timeEl = this.overlay.querySelector('#hud-time');
     const comboEl = this.overlay.querySelector('#hud-combo');
+    const comboWrap = this.overlay.querySelector('.hud-combo-wrap');
+    const comboRing = this.overlay.querySelector('#hud-combo-ring') as SVGCircleElement | null;
     const phaseEl = this.overlay.querySelector('#hud-phase-fill') as HTMLElement;
     const powerupsEl = this.overlay.querySelector('#hud-powerups');
     const speedEl = this.overlay.querySelector('#hud-speed');
     const speedFill = this.overlay.querySelector('#hud-speed-fill') as HTMLElement;
+    const challengeRow = this.overlay.querySelector('#hud-challenge');
+    const challengeFill = this.overlay.querySelector('#hud-challenge-fill') as HTMLElement;
+    const challengeText = this.overlay.querySelector('#hud-challenge-text');
 
     if (scoreEl) scoreEl.textContent = formatScore(stats.score);
     if (timeEl) {
@@ -153,10 +176,20 @@ export class UIManager {
       }
     }
     if (comboEl) comboEl.textContent = stats.combo;
+    if (comboWrap) comboWrap.classList.toggle('active', !!stats.combo);
+    if (comboRing && stats.comboTimer !== undefined) {
+      const circumference = 2 * Math.PI * 16;
+      comboRing.style.strokeDasharray = `${circumference}`;
+      comboRing.style.strokeDashoffset = `${circumference * (1 - stats.comboTimer)}`;
+    }
     if (phaseEl) phaseEl.style.width = `${stats.phase * 100}%`;
     if (powerupsEl) {
+      const labels: Record<string, string> = { shield: 'S', magnet: 'M', overclock: 'O', chronos: 'C' };
       powerupsEl.innerHTML = stats.powerups.map((p) =>
-        `<span class="powerup-badge" aria-label="${p} powerup active">${p[0].toUpperCase()}</span>`,
+        `<span class="powerup-badge" aria-label="${p.type} powerup active" title="${p.type}">
+          <span class="powerup-letter">${labels[p.type] ?? p.type[0].toUpperCase()}</span>
+          <span class="powerup-timer" style="width:${Math.round(p.ratio * 100)}%"></span>
+        </span>`,
       ).join('');
     }
     if (speedEl && stats.speed !== undefined) {
@@ -165,6 +198,57 @@ export class UIManager {
     if (speedFill && stats.speedRatio !== undefined) {
       speedFill.style.width = `${stats.speedRatio * 100}%`;
     }
+    if (challengeRow && stats.targetScore && stats.targetScore > 0) {
+      challengeRow.classList.remove('hidden');
+      const ratio = Math.min(1, stats.score / stats.targetScore);
+      if (challengeFill) challengeFill.style.width = `${ratio * 100}%`;
+      if (challengeText) challengeText.textContent = `${formatScore(stats.score)} / ${formatScore(stats.targetScore)}`;
+    } else if (challengeRow) {
+      challengeRow.classList.add('hidden');
+    }
+  }
+
+  runCountdown(): Promise<void> {
+    return new Promise((resolve) => {
+      const steps = ['3', '2', '1', 'SYNC'];
+      const overlay = document.createElement('div');
+      overlay.className = 'countdown-overlay';
+      overlay.setAttribute('aria-live', 'assertive');
+      this.overlay.appendChild(overlay);
+
+      let i = 0;
+      const tick = (): void => {
+        if (i >= steps.length) {
+          overlay.remove();
+          resolve();
+          return;
+        }
+        const isFinal = i === steps.length - 1;
+        overlay.innerHTML = `<span class="countdown-num ${isFinal ? 'countdown-sync' : ''}">${steps[i]}</span>`;
+        overlay.classList.remove('pulse');
+        void overlay.offsetWidth;
+        overlay.classList.add('pulse');
+        this.audio.playCountdownTick(isFinal);
+        i++;
+        setTimeout(tick, isFinal ? 450 : 650);
+      };
+      tick();
+    });
+  }
+
+  private flashScreen(color = 'rgba(255,0,110,0.4)', duration = 300): void {
+    if (this.save.settings.reducedMotion) return;
+    let flash = this.root.querySelector('#ui-flash') as HTMLElement | null;
+    if (!flash) {
+      flash = document.createElement('div');
+      flash.id = 'ui-flash';
+      this.root.appendChild(flash);
+    }
+    flash.style.background = color;
+    flash.classList.remove('active');
+    void flash.offsetWidth;
+    flash.classList.add('active');
+    setTimeout(() => flash?.classList.remove('active'), duration);
   }
 
   hideOverlay(): void {
@@ -290,13 +374,24 @@ export class UIManager {
           <span class="hud-label">SCORE</span>
           <span id="hud-score" class="hud-score" aria-live="polite">0</span>
         </div>
+        <div id="hud-challenge" class="hud-challenge hidden">
+          <span class="hud-label-sm">TARGET</span>
+          <div class="challenge-bar"><div id="hud-challenge-fill" class="challenge-fill"></div></div>
+          <span id="hud-challenge-text" class="hud-challenge-text">0 / 5000</span>
+        </div>
         <div class="hud-time-group">
           <span id="hud-time" class="hud-time">0:00</span>
         </div>
         <button id="hud-pause" class="hud-pause btn-icon" aria-label="Pause game">⏸</button>
       </div>
       <div class="hud-bottom">
-        <span id="hud-combo" class="hud-combo" aria-live="polite"></span>
+        <div class="hud-combo-wrap">
+          <svg class="combo-ring" viewBox="0 0 36 36" aria-hidden="true">
+            <circle class="combo-ring-bg" cx="18" cy="18" r="16" fill="none" stroke-width="2"/>
+            <circle id="hud-combo-ring" class="combo-ring-fill" cx="18" cy="18" r="16" fill="none" stroke-width="2"/>
+          </svg>
+          <span id="hud-combo" class="hud-combo" aria-live="polite"></span>
+        </div>
         <div class="hud-speed-row">
           <span class="hud-label-sm">VEL</span>
           <span id="hud-speed" class="hud-speed">×1.0</span>
@@ -418,14 +513,16 @@ export class UIManager {
     });
   }
 
-  private renderGameOver(data: RunStats & { newHighScore?: boolean; xpGained?: number; creditsEarned?: number }): void {
+  private renderGameOver(data: RunStats & { newHighScore?: boolean; xpGained?: number; creditsEarned?: number; syncUnlocks?: string[] }): void {
     const rank = data.rankPercentile ?? 0;
     const rankMsg = rank >= 90 ? 'ELITE PILOT' : rank >= 70 ? 'SKILLED RUNNER' : rank >= 40 ? 'RISING SYNC' : 'KEEP TRAINING';
+    const unlocks = data.syncUnlocks ?? [];
     this.overlay.className = 'screen screen-gameover modal-overlay';
     this.overlay.innerHTML = `
       <div class="modal panel animate-in gameover-panel">
         <h2 class="modal-title">${data.score > 0 ? 'RUN COMPLETE' : 'SYSTEM FAILURE'}</h2>
         ${data.newHighScore ? '<div class="new-high-score">★ NEW HIGH SCORE ★</div>' : ''}
+        ${unlocks.length > 0 ? `<div class="unlock-banner">${unlocks.map((u) => `<span>🔓 ${u} UNLOCKED</span>`).join('')}</div>` : ''}
         <div class="rank-badge">TOP ${rank}% · ${rankMsg}</div>
         <div class="stats-grid">
           <div class="stat-item"><span class="stat-label">SCORE</span><span class="stat-value">${formatScore(data.score)}</span></div>
@@ -682,6 +779,28 @@ export class UIManager {
       .screen-hud { pointer-events: none; flex-direction: column; justify-content: space-between; padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
       .screen-hud .hud-pause { pointer-events: auto; }
 
+      #ui-flash {
+        position: absolute; inset: 0; pointer-events: none; z-index: 20; opacity: 0;
+        transition: opacity 0.05s ease-out;
+      }
+      #ui-flash.active { opacity: 1; transition: opacity 0.15s ease-in; }
+
+      .countdown-overlay {
+        position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+        pointer-events: none; z-index: 15; background: rgba(10, 14, 26, 0.35);
+      }
+      .countdown-num {
+        font-family: 'Orbitron', sans-serif; font-size: 5rem; font-weight: 900;
+        color: var(--color-neonCyan); text-shadow: 0 0 40px rgba(0,240,255,0.6);
+      }
+      .countdown-num.countdown-sync {
+        font-size: 3rem; color: var(--color-neonGold);
+        text-shadow: 0 0 40px rgba(255,215,0,0.6);
+      }
+      .countdown-overlay.pulse .countdown-num { animation: countdownPop 0.5s ease-out; }
+      body.reduced-motion .countdown-overlay.pulse .countdown-num { animation: none; }
+      @keyframes countdownPop { from { transform: scale(1.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
       .animate-in { animation: fadeScaleIn 0.4s ease-out; }
       body.reduced-motion .animate-in { animation: none; }
       @keyframes fadeScaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
@@ -746,12 +865,23 @@ export class UIManager {
       .btn-icon { background: rgba(18,24,41,0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 12px; color: var(--color-textPrimary); cursor: pointer; font-size: 1rem; }
 
       /* HUD */
-      .hud-top { display: flex; align-items: flex-start; justify-content: space-between; width: 100%; padding-top: env(safe-area-inset-top, 8px); }
+      .hud-top { display: flex; align-items: flex-start; justify-content: space-between; width: 100%; padding-top: env(safe-area-inset-top, 8px); gap: 8px; flex-wrap: wrap; }
       .hud-label { font-size: 0.65rem; color: var(--color-textSecondary); letter-spacing: 0.15em; }
       .hud-score { font-family: 'Orbitron', sans-serif; font-size: 1.6rem; font-weight: 800; display: block; }
       .hud-time { font-family: 'Orbitron', sans-serif; font-size: 1.2rem; font-weight: 600; }
+      .hud-challenge { flex: 1; min-width: 120px; max-width: 200px; }
+      .hud-challenge.hidden { display: none; }
+      .hud-challenge-text { font-size: 0.7rem; color: var(--color-neonGold); display: block; margin-top: 2px; }
+      .challenge-bar { height: 4px; background: var(--color-voidLight); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+      .challenge-fill { height: 100%; background: var(--color-neonGold); box-shadow: 0 0 8px var(--color-neonGold); transition: width 0.15s linear; }
       .hud-bottom { width: 100%; padding-bottom: env(safe-area-inset-bottom, 8px); }
-      .hud-combo { font-family: 'Orbitron', sans-serif; font-size: 1.1rem; color: var(--color-neonGold); font-weight: 700; display: block; margin-bottom: 8px; }
+      .hud-combo-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 36px; margin-bottom: 8px; opacity: 0.35; transition: opacity 0.2s; }
+      .hud-combo-wrap.active { opacity: 1; }
+      .combo-ring { position: absolute; width: 36px; height: 36px; transform: rotate(-90deg); opacity: 0; transition: opacity 0.2s; }
+      .hud-combo-wrap.active .combo-ring { opacity: 1; }
+      .combo-ring-bg { stroke: rgba(255,255,255,0.08); }
+      .combo-ring-fill { stroke: var(--color-neonGold); stroke-linecap: round; transition: stroke-dashoffset 0.1s linear; }
+      .hud-combo { font-family: 'Orbitron', sans-serif; font-size: 1.1rem; color: var(--color-neonGold); font-weight: 700; display: block; padding-left: 44px; min-height: 1.2em; }
       .hud-speed-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
       .hud-speed { font-family: 'Orbitron', sans-serif; font-size: 0.85rem; color: var(--color-neonCyan); font-weight: 700; min-width: 36px; }
       .speed-bar { flex: 1; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; max-width: 100px; }
@@ -761,7 +891,23 @@ export class UIManager {
       .phase-bar { flex: 1; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; max-width: 120px; }
       .phase-fill { height: 100%; background: var(--color-neonViolet); border-radius: 2px; transition: width 0.1s; box-shadow: 0 0 8px var(--color-neonViolet); }
       .hud-powerups { display: flex; gap: 6px; }
-      .powerup-badge { width: 24px; height: 24px; border-radius: 50%; background: var(--color-neonViolet); display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; }
+      .powerup-badge {
+        position: relative; width: 28px; height: 28px; border-radius: 6px;
+        background: rgba(0,240,255,0.12); border: 1px solid var(--color-neonCyan);
+        display: flex; align-items: center; justify-content: center; overflow: hidden;
+      }
+      .powerup-letter { font-family: 'Orbitron', sans-serif; font-size: 0.75rem; font-weight: 700; z-index: 1; }
+      .powerup-timer {
+        position: absolute; bottom: 0; left: 0; height: 3px;
+        background: var(--color-neonCyan); box-shadow: 0 0 6px var(--color-neonCyan);
+        transition: width 0.1s linear;
+      }
+      .unlock-banner {
+        display: flex; flex-direction: column; gap: 6px; margin: 12px 0;
+        padding: 10px; border: 1px solid var(--color-neonViolet); border-radius: 8px;
+        background: rgba(139,92,246,0.12); text-align: center;
+        font-family: 'Orbitron', sans-serif; font-size: 0.85rem; color: var(--color-neonViolet);
+      }
       .hud-hint { text-align: center; font-size: 0.65rem; color: var(--color-textSecondary); opacity: 0.5; pointer-events: none; padding-bottom: 4px; }
 
       /* Modals */

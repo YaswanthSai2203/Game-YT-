@@ -189,7 +189,7 @@ export class SaveManager {
     this.persist();
   }
 
-  recordRun(stats: RunStats): { newHighScore: boolean; xpGained: number; creditsEarned: number } {
+  recordRun(stats: RunStats): { newHighScore: boolean; xpGained: number; creditsEarned: number; syncUnlocks: string[] } {
     this.data.stats.totalRuns++;
     this.data.stats.totalShards += stats.shards;
     this.data.stats.totalScore += stats.score;
@@ -221,7 +221,7 @@ export class SaveManager {
     this.data.leaderboard[modeKey] = board.slice(0, LEADERBOARD_SIZE);
 
     const xpGained = stats.shards * SYNC.XP_PER_SHARD + Math.floor(stats.score / 100);
-    this.addSyncXP(xpGained);
+    const syncUnlocks = this.addSyncXP(xpGained);
 
     const today = getTodayDateString();
     if (this.data.daily.lastPlayedDate !== today) {
@@ -251,6 +251,6 @@ export class SaveManager {
     this.data.dataCredits += creditsEarned;
 
     this.persist();
-    return { newHighScore, xpGained, creditsEarned };
+    return { newHighScore, xpGained, creditsEarned, syncUnlocks };
   }
 }

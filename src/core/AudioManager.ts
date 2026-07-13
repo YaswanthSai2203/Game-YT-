@@ -10,6 +10,8 @@ export class AudioManager {
   private musicOscs: OscillatorNode[] = [];
   private musicInterval: ReturnType<typeof setInterval> | null = null;
   private musicPlaying = false;
+  private musicStep = 0;
+  private pauseDucked = false;
   private save: SaveManager;
   private intensity = 0;
 
@@ -39,6 +41,14 @@ export class AudioManager {
 
   refresh(): void {
     this.applyVolumes();
+    if (this.pauseDucked) this.setPaused(true);
+  }
+
+  setPaused(ducked: boolean): void {
+    if (!this.musicGain || !this.ctx) return;
+    this.pauseDucked = ducked;
+    const vol = this.save.settings.musicVolume * (ducked ? 0.15 : 1);
+    this.musicGain.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.08);
   }
 
   resume(): void {
@@ -117,9 +127,54 @@ export class AudioManager {
       setTimeout(() => this.playTone(f, 0.2, 'sine', 0.3), i * 120);
     });
   }
+  playNearMiss(): void {
+    this.playTone(880, 0.06, 'sine', 0.18);
+    setTimeout(() => this.playTone(1100, 0.08, 'triangle', 0.12), 40);
+  }
+  playShieldBreak(): void {
+    this.playNoise(0.25, 0.25);
+    this.playTone(220, 0.2, 'square', 0.2);
+    setTimeout(() => this.playTone(440, 0.15, 'sine', 0.15), 80);
+  }
+  playComboBreak(): void {
+    this.playTone(330, 0.12, 'sawtooth', 0.12);
+    setTimeout(() => this.playTone(220, 0.18, 'sawtooth', 0.1), 60);
+  }
+  playCountdownTick(final = false): void {
+    if (final) {
+      this.playTone(523, 0.12, 'square', 0.25);
+      setTimeout(() => this.playTone(784, 0.2, 'square', 0.3), 80);
+    } else {
+      this.playTone(440, 0.08, 'square', 0.2);
+    }
+  }
 
   setIntensity(value: number): void {
-    this.intensity = value;
+    const prev = this.intensity;
+    this.intensity = Math.max(0, Math.min(1, value));
+    if (this.musicPlaying && Math.abs(prev - this.intensity) > 0.08) {
+      this.restartMusicTicker();
+    }
+  }
+
+  private getMusicTickMs(): number {
+    return Math.max(180, 420 - this.intensity * 180);
+  }
+
+  private restartMusicTicker(): void {
+    if (!this.musicPlaying) return;
+    if (this.musicInterval) clearInterval(this.musicInterval);
+    this.startMusicTicker();
+  }
+
+  private startMusicTicker(): void {
+    const scale = [261, 294, 330, 349, 392, 440, 494, 523];
+    this.musicInterval = setInterval(() => {
+      if (!this.ctx) return;
+      const freq = scale[this.musicStep % scale.length] * (1 + this.intensity * 0.5);
+      this.playTone(freq, 0.15, 'triangle', 0.06 + this.intensity * 0.04);
+      this.musicStep++;
+    }, this.getMusicTickMs());
   }
 
   startMusic(): void {
@@ -139,14 +194,8 @@ export class AudioManager {
       this.musicOscs.push(osc);
     }
 
-    let step = 0;
-    const scale = [261, 294, 330, 349, 392, 440, 494, 523];
-    this.musicInterval = setInterval(() => {
-      if (!this.ctx) return;
-      const freq = scale[step % scale.length] * (1 + this.intensity * 0.5);
-      this.playTone(freq, 0.15, 'triangle', 0.06 + this.intensity * 0.04);
-      step++;
-    }, 400 - this.intensity * 100);
+    this.musicStep = 0;
+    this.startMusicTicker();
   }
 
   stopMusic(): void {
