@@ -82,6 +82,10 @@ export class UIManager {
     this.events.on('community:hex_flash', (d) => this.flashHexFragment(d.fragment));
     this.events.on('ui:impossible_crash', () => this.showImpossibleCrash());
     this.events.on('grid:sync_complete', () => { /* handled at game over */ });
+    this.events.on('director:run_start', (d) => this.showRunTheme(d.label, d.subtitle, d.mood));
+    this.events.on('director:mercy_pulse', () => {
+      if (Math.random() < 0.5) this.showToast('The Grid eases pressure… briefly.', 'info');
+    });
 
     this.events.on('settings:change', () => this.applyTheme());
   }
@@ -537,6 +541,25 @@ export class UIManager {
     `;
   }
 
+  showRunTheme(label: string, subtitle: string, mood: string): void {
+    if (this.save.settings.reducedMotion) {
+      this.showToast(`${label} — ${subtitle}`, 'milestone');
+      return;
+    }
+    const el = document.createElement('div');
+    el.className = `run-theme-banner mood-${mood}`;
+    el.innerHTML = `
+      <p class="run-theme-label">${label}</p>
+      <p class="run-theme-sub">${subtitle}</p>
+    `;
+    this.root.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('visible'));
+    setTimeout(() => {
+      el.classList.add('fade-out');
+      setTimeout(() => el.remove(), 800);
+    }, 3200);
+  }
+
   private renderSplash(): void {
     const syncComplete = this.save.save.worldMemory.gridSyncComplete;
     const title = syncComplete ? 'THE GRID' : GAME.TITLE;
@@ -582,6 +605,7 @@ export class UIManager {
         <header class="menu-header">
           <h1 class="menu-title">${title}</h1>
           <p class="menu-subtitle">${subtitle}</p>
+          <p class="menu-player-title">${save.worldMemory.playerTitle || 'Pilot'}</p>
           ${gridSync >= GRID_SYNC.THRESHOLDS.WHISPERS ? `<p class="menu-ai-whisper">The Grid remembers you.</p>` : ''}
         </header>
 
@@ -810,6 +834,7 @@ export class UIManager {
     this.overlay.innerHTML = `
       <div class="modal panel animate-in gameover-panel">
         <h2 class="modal-title">${data.score > 0 ? 'RUN COMPLETE' : 'SYSTEM FAILURE'}</h2>
+        <p class="gameover-player-title">${this.save.save.worldMemory.playerTitle || 'Pilot'}</p>
         ${data.newHighScore ? '<div class="new-high-score">★ NEW HIGH SCORE ★</div>' : ''}
         ${unlocks.length > 0 ? `<div class="unlock-banner">${unlocks.map((u) => `<span>🔓 ${u} UNLOCKED</span>`).join('')}</div>` : ''}
         ${(data.realitiesDiscovered?.length ?? 0) > 0 ? `<div class="reality-discovered-banner"><span>🌀 REALITIES DISCOVERED</span>${data.realitiesDiscovered!.map((r) => `<span class="reality-tag">${r.replace(/_/g, ' ')}</span>`).join('')}</div>` : ''}
@@ -952,13 +977,15 @@ export class UIManager {
         <div class="ach-list">
           ${all.map((a) => {
             const unlocked = this.achievements.isUnlocked(a.id);
-            const hidden = a.secret && !unlocked;
+            const hidden = (a.secret || a.mysterious) && !unlocked;
+            const title = this.achievements.getDisplayTitle(a);
+            const desc = this.achievements.getDisplayDescription(a);
             return `
-              <div class="ach-item ${unlocked ? 'unlocked' : 'locked'}" aria-label="${hidden ? 'Secret achievement' : a.title}">
+              <div class="ach-item ${unlocked ? 'unlocked' : 'locked'}" aria-label="${hidden ? 'Secret achievement' : title}">
                 <span class="ach-icon">${hidden ? '❓' : a.icon}</span>
                 <div class="ach-info">
-                  <span class="ach-title">${hidden ? '???' : a.title}</span>
-                  <span class="ach-desc">${hidden ? 'Hidden achievement' : a.description}</span>
+                  <span class="ach-title">${title}</span>
+                  <span class="ach-desc">${desc}</span>
                 </div>
               </div>
             `;
@@ -1297,6 +1324,29 @@ export class UIManager {
         animation: badgePulse 2s ease-in-out infinite; pointer-events: none;
       }
       .menu-ai-whisper { font-size: 0.75rem; color: var(--color-textSecondary); font-style: italic; margin-top: 4px; }
+      .menu-player-title {
+        font-family: 'Orbitron', sans-serif; font-size: 0.7rem; letter-spacing: 0.25em;
+        color: var(--color-neonGold); margin-top: 6px; opacity: 0.85;
+      }
+      .gameover-player-title {
+        font-family: 'Orbitron', sans-serif; font-size: 0.75rem; letter-spacing: 0.2em;
+        color: var(--color-neonGold); margin: 4px 0 12px; opacity: 0.9;
+      }
+      .run-theme-banner {
+        position: absolute; top: 18%; left: 50%; transform: translateX(-50%) translateY(12px);
+        text-align: center; z-index: 24; pointer-events: none; opacity: 0;
+        transition: opacity 0.5s ease, transform 0.5s ease;
+      }
+      .run-theme-banner.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+      .run-theme-banner.fade-out { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+      .run-theme-label {
+        font-family: 'Orbitron', sans-serif; font-size: 1.1rem; font-weight: 800;
+        color: var(--color-neonCyan); letter-spacing: 0.15em;
+        text-shadow: 0 0 20px rgba(0,240,255,0.5);
+      }
+      .run-theme-sub { font-size: 0.85rem; color: var(--color-textSecondary); margin-top: 6px; letter-spacing: 0.08em; }
+      .run-theme-banner.mood-aggressive .run-theme-label { color: var(--color-neonMagenta); }
+      .run-theme-banner.mood-respectful .run-theme-label { color: var(--color-neonGold); }
       .menu-glitch .menu-title { animation: glitchScan 3s steps(2) infinite; }
       .menu-corrupt .menu-title { color: var(--color-neonMagenta); letter-spacing: 0.15em; }
       .menu-hidden-btn { opacity: 0.35; font-size: 0.75rem; }

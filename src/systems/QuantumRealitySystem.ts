@@ -69,6 +69,7 @@ export class QuantumRealitySystem {
 
   private adaptiveUnlocked = false;
   private hiddenDimensionsUnlocked = false;
+  private fractureBoost = 1;
 
   constructor(events: EventBus, seed?: number) {
     this.events = events;
@@ -81,6 +82,10 @@ export class QuantumRealitySystem {
 
   setHiddenDimensionsUnlocked(unlocked: boolean): void {
     this.hiddenDimensionsUnlocked = unlocked;
+  }
+
+  setFractureBoost(boost: number): void {
+    this.fractureBoost = boost;
   }
 
   setPunishLanes(left: boolean, right: boolean): void {
@@ -104,6 +109,7 @@ export class QuantumRealitySystem {
     this.activeRare = null;
     this.usedDimensionIds.clear();
     this.glitchBuildup = 0;
+    this.fractureBoost = 1;
     this.shardTimestamps = [];
   }
 
@@ -214,6 +220,14 @@ export class QuantumRealitySystem {
     return this.glitchBuildup;
   }
 
+  getFlowRatio(): number {
+    return this.flowMeter / 100;
+  }
+
+  getStruggleRatio(): number {
+    return this.struggleMeter / 100;
+  }
+
   getActiveDimension(): RealityDimensionDef | null {
     return this.activeFracture?.dimension ?? null;
   }
@@ -295,7 +309,7 @@ export class QuantumRealitySystem {
     const forced = this.flowMeter >= REALITY.FRACTURE_FLOW_FORCE;
 
     if (!ready && !forced) return;
-    if (!forced && this.rng() > 0.035) return;
+    if (!forced && this.rng() > 0.035 / this.fractureBoost) return;
 
     const pool = REALITY_DIMENSIONS.filter((d) => {
       if (d.id === 'adaptive_protocol' && !this.adaptiveUnlocked) return false;

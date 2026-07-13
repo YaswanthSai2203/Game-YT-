@@ -27,7 +27,70 @@ const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'no_phase', title: 'Pure Skill', description: 'Score 3,000 without phase shift', icon: '🎯', condition: (_, r) => r.phaseShifts === 0 && r.score >= 3000 },
   { id: 'vault', title: 'Hidden Vault', description: 'Discover a secret data vault', icon: '🗝️', condition: (_, r) => r.score >= 8000, secret: true },
   { id: 'speed_demon', title: 'Speed Demon', description: 'Survive 90s in endless mode', icon: '💨', condition: (_, r) => r.mode === 'endless' && r.timeAlive >= 90, secret: true },
+  // Mysterious Grid achievements — no description until unlocked
+  {
+    id: 'grid_listens', title: '???', description: '???', icon: '👁️', mysterious: true, secret: true,
+    condition: () => true,
+    metaCondition: (m) => m.gridSync >= 25,
+  },
+  {
+    id: 'myth_touch', title: '???', description: '???', icon: '✦', mysterious: true, secret: true,
+    condition: () => true,
+    metaCondition: (m) => m.mythsWitnessed.length >= 1,
+  },
+  {
+    id: 'null_breach', title: '???', description: '???', icon: '⬡', mysterious: true, secret: true,
+    condition: () => true,
+    metaCondition: (m) => m.impossibleSeen,
+  },
+  {
+    id: 'pattern_break', title: '???', description: '???', icon: '⟁', mysterious: true, secret: true,
+    condition: () => true,
+    metaCondition: (m) => m.adaptiveUnlocked,
+  },
+  {
+    id: 'unwatched', title: '???', description: '???', icon: '◎', mysterious: true, secret: true,
+    condition: () => true,
+    metaCondition: (m) => m.watcherDefeated,
+  },
+  {
+    id: 'lattice_bound', title: '???', description: '???', icon: '∞', mysterious: true, secret: true,
+    condition: () => true,
+    metaCondition: (m) => m.gridSyncComplete,
+  },
+  {
+    id: 'edge_runner', title: '???', description: '???', icon: '⚡', mysterious: true, secret: true,
+    condition: () => true,
+    metaCondition: (m) => m.nearMissLifetime >= 40,
+  },
+  {
+    id: 'echo_self', title: '???', description: '???', icon: '👤', mysterious: true, secret: true,
+    condition: () => true,
+    metaCondition: (m) => !!m.ghostReplay && m.ghostReplay.score >= 1500,
+  },
 ];
+
+const MYSTERY_TITLES: Record<string, string> = {
+  grid_listens: 'The Grid Listens',
+  myth_touch: 'Myth Touched',
+  null_breach: 'Null Breach',
+  pattern_break: 'Pattern Broken',
+  unwatched: 'Unwatched',
+  lattice_bound: 'Lattice Bound',
+  edge_runner: 'Edge Runner',
+  echo_self: 'Echo Self',
+};
+
+const MYSTERY_DESCRIPTIONS: Record<string, string> = {
+  grid_listens: 'The Grid began whispering back.',
+  myth_touch: 'You witnessed something that should not exist.',
+  null_breach: 'The simulation glitched. You stayed.',
+  pattern_break: 'You broke a habit the Grid exploited.',
+  unwatched: 'You outlasted the Watcher.',
+  lattice_bound: 'Synchronization complete. You are part of the Grid.',
+  edge_runner: 'Forty near-misses. The Grid took note.',
+  echo_self: 'Your past self became your rival.',
+};
 
 export class AchievementManager {
   private events: EventBus;
@@ -42,6 +105,18 @@ export class AchievementManager {
     return ACHIEVEMENTS;
   }
 
+  getDisplayTitle(ach: AchievementDef): string {
+    if (ach.mysterious && !this.isUnlocked(ach.id)) return '???';
+    if (ach.mysterious && MYSTERY_TITLES[ach.id]) return MYSTERY_TITLES[ach.id];
+    return ach.title;
+  }
+
+  getDisplayDescription(ach: AchievementDef): string {
+    if (ach.mysterious && !this.isUnlocked(ach.id)) return '???';
+    if (ach.mysterious && MYSTERY_DESCRIPTIONS[ach.id]) return MYSTERY_DESCRIPTIONS[ach.id];
+    return ach.description;
+  }
+
   isUnlocked(id: string): boolean {
     return this.save.save.achievements[id]?.unlocked ?? false;
   }
@@ -53,18 +128,21 @@ export class AchievementManager {
 
   check(run: RunStats): string[] {
     const stats = this.save.save.stats;
+    const mem = this.save.save.worldMemory;
     const newlyUnlocked: string[] = [];
 
     for (const ach of ACHIEVEMENTS) {
       if (this.isUnlocked(ach.id)) continue;
-      if (ach.condition(stats, run)) {
-        this.save.save.achievements[ach.id] = {
-          unlocked: true,
-          unlockedAt: new Date().toISOString(),
-        };
-        newlyUnlocked.push(ach.id);
-        this.events.emit('achievement:unlock', { id: ach.id, title: ach.title });
-      }
+      if (!ach.condition(stats, run)) continue;
+      if (ach.metaCondition && !ach.metaCondition(mem, run)) continue;
+
+      const title = ach.mysterious ? (MYSTERY_TITLES[ach.id] ?? ach.title) : ach.title;
+      this.save.save.achievements[ach.id] = {
+        unlocked: true,
+        unlockedAt: new Date().toISOString(),
+      };
+      newlyUnlocked.push(ach.id);
+      this.events.emit('achievement:unlock', { id: ach.id, title });
     }
 
     if (newlyUnlocked.length > 0) {

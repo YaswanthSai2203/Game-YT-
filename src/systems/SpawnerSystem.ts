@@ -30,6 +30,7 @@ export class SpawnerSystem {
   private scrollSpeed: number;
   private speedRatio = 0;
   private modifiers: RealityModifiers | null = null;
+  private directorMods: { spawnIntervalMult?: number; firewallWeight?: number; shardWeight?: number } | null = null;
   private titanTimer = 0;
   private assistShardsPending = 0;
 
@@ -40,6 +41,10 @@ export class SpawnerSystem {
 
   setModifiers(mods: RealityModifiers | null): void {
     this.modifiers = mods;
+  }
+
+  setDirectorModifiers(mods: { spawnIntervalMult?: number; firewallWeight?: number; shardWeight?: number } | null): void {
+    this.directorMods = mods;
   }
 
   queueAssistShard(): void {
@@ -93,7 +98,7 @@ export class SpawnerSystem {
 
     this.entities = this.entities.filter((e) => e.active);
 
-    const intervalMult = this.modifiers?.spawnIntervalMult ?? 1;
+    const intervalMult = (this.modifiers?.spawnIntervalMult ?? 1) * (this.directorMods?.spawnIntervalMult ?? 1);
     const interval = lerp(
       DIFFICULTY.SPAWN_INTERVAL_BASE,
       DIFFICULTY.SPAWN_INTERVAL_MIN,
@@ -143,7 +148,7 @@ export class SpawnerSystem {
       return;
     }
 
-    const fwWeight = this.modifiers?.firewallWeight ?? 1;
+    const fwWeight = (this.modifiers?.firewallWeight ?? 1) * (this.directorMods?.firewallWeight ?? 1);
     const patternLevel = DIFFICULTY.PATTERN_UNLOCK_TIME.filter((t) => this.elapsed >= t).length;
 
     if (fwWeight < 0.7 && this.rng() < 0.45) {
@@ -218,7 +223,7 @@ export class SpawnerSystem {
 
   private spawnDualObstacle(): void {
     const blocked = randomInt(0, 2);
-    const fwWeight = this.modifiers?.firewallWeight ?? 1;
+    const fwWeight = (this.modifiers?.firewallWeight ?? 1) * (this.directorMods?.firewallWeight ?? 1);
     for (let i = 0; i < 3; i++) {
       if (i !== blocked && this.rng() < fwWeight) this.spawnEntity('firewall', i);
       else this.spawnEntity('shard', i);
@@ -336,6 +341,7 @@ export class SpawnerSystem {
     this.speedRatio = 0;
     this.scrollSpeed = SCROLL.MIN_SPEED;
     this.modifiers = null;
+    this.directorMods = null;
     this.titanTimer = 8;
     this.assistShardsPending = 0;
   }

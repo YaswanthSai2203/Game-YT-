@@ -334,3 +334,45 @@ export function createGhostCore(radius: number): Container {
   container.alpha = 0.45;
   return container;
 }
+
+/** Dynamic weather layer driven by AI Director mood/theme */
+export function createWeatherOverlay(width: number, height: number, weather: string): Container {
+  const container = new Container();
+  container.label = 'weather';
+  const g = new Graphics();
+
+  if (weather === 'data_rain') {
+    for (let i = 0; i < 80; i++) {
+      const x = (i * 47) % width;
+      const y = (i * 31) % height;
+      g.moveTo(x, y);
+      g.lineTo(x - 4, y + 14);
+      g.stroke({ color: COLORS.cyan, width: 1, alpha: 0.12 + (i % 3) * 0.04 });
+    }
+  } else if (weather === 'static_storm') {
+    for (let i = 0; i < 40; i++) {
+      const x = (i * 73) % width;
+      const y = (i * 53) % height;
+      g.rect(x, y, 2 + (i % 3), 1);
+      g.fill({ color: COLORS.magenta, alpha: 0.08 + (i % 4) * 0.03 });
+    }
+    g.rect(0, 0, width, height);
+    g.fill({ color: COLORS.violet, alpha: 0.04 });
+  } else if (weather === 'void_fog') {
+    g.rect(0, height * 0.4, width, height * 0.6);
+    g.fill({ color: 0x0a0e1a, alpha: 0.35 });
+    g.rect(0, 0, width, height * 0.3);
+    g.fill({ color: COLORS.violet, alpha: 0.06 });
+  } else if (weather === 'corruption_haze') {
+    g.rect(0, 0, width, height);
+    g.fill({ color: COLORS.magenta, alpha: 0.06 });
+    for (let i = 0; i < 25; i++) {
+      g.circle((i * 91) % width, (i * 67) % height, 20 + (i % 5) * 8);
+      g.fill({ color: COLORS.red, alpha: 0.03 });
+    }
+  }
+
+  container.addChild(g);
+  container.alpha = weather === 'clear' ? 0 : 0.85;
+  return container;
+}

@@ -18,13 +18,15 @@ import {
   createPlayerCore, createFirewall, createShard,
   createPowerupIcon, createGridBackground, getCoreColor,
   createBossFirewall, createGoldenShard, createGhostCore, createWhiteFirewall,
-  createScoreBoostPickup, createBombPickup,
+  createScoreBoostPickup, createBombPickup, createWeatherOverlay,
 } from '@/graphics/ProceduralAssets';
 import { QuantumRealitySystem } from '@/systems/QuantumRealitySystem';
 import { SentientAISystem } from '@/systems/SentientAISystem';
 import { MythEventSystem } from '@/systems/MythEventSystem';
 import { LivingWatcher } from '@/systems/LivingWatcher';
 import { GridSyncSystem } from '@/systems/GridSyncSystem';
+import { AIDirectorSystem, type RunPlan } from '@/systems/AIDirectorSystem';
+import { GhostReplaySystem } from '@/systems/GhostReplaySystem';
 import { GRID_SYNC } from '@/config/sentientConfig';
 import { clamp, easeOutCubic, circleRectOverlap, lerp } from '@/utils/math';
 
@@ -95,6 +97,12 @@ export class GameScene extends BaseScene {
   private bgPulsePhase = 0;
   private sentient!: SentientAISystem;
   private gridSync!: GridSyncSystem;
+  private director!: AIDirectorSystem;
+  private ghostReplay!: GhostReplaySystem;
+  private runPlan: RunPlan | null = null;
+  private weatherOverlay: Container | null = null;
+  private slowMoScale = 1;
+  private slowMoTimer = 0;
   private myth!: MythEventSystem;
   private watcher: LivingWatcher | null = null;
   private fourthLaneActive = false;
@@ -167,6 +175,11 @@ export class GameScene extends BaseScene {
       this.events.on('grid:myth', (d) => this.gridSync?.onMythWitnessed(d.id)),
       this.events.on('grid:habit_broken', () => this.gridSync?.onHabitBroken()),
       this.events.on('grid:adaptive_unlock', () => this.gridSync?.onAdaptiveUnlocked()),
+      this.events.on('director:slowmo', (d) => {
+        this.slowMoTimer = d.duration;
+        this.slowMoScale = d.scale;
+      }),
+      this.events.on('audio:mood', (d) => this.audio.setGridMood(d.mood)),
     );
   }
 
@@ -213,6 +226,19 @@ export class GameScene extends BaseScene {
     this.gridBg = createGridBackground(this.gameWidth, this.gameHeight, theme);
     this.container.addChild(this.gridBg);
 
+    this.director = new AIDirectorSystem(this.events, this.save);
+    this.runPlan = this.director.planRun(this.config.mode);
+    this.director.emitRunStart(this.runPlan);
+    this.weatherOverlay = createWeatherOverlay(this.gameWidth, this.gameHeight, this.runPlan.weather);
+    this.gridBg.addChild(this.weatherOverlay);
+    this.audio.setGridMood(this.runPlan.mood);
+
+    this.ghostReplay = new GhostReplaySystem();
+    this.ghostReplay.startRecording(this.config.mode);
+    if (this.runPlan.useGhostReplay && this.save.save.worldMemory.ghostReplay) {
+      this.ghostReplay.loadPlayback(this.save.save.worldMemory.ghostReplay, this.container);
+    }
+
     this.particles = new ParticleSystem(
       this.container,
       this.save.settings.reducedMotion,
@@ -236,6 +262,9 @@ export class GameScene extends BaseScene {
     this.gridSync.resetRun();
     this.myth = new MythEventSystem(this.events, this.save, seed);
     this.myth.reset();
+    this.spawner.setDirectorModifiers(this.director.getSpawnModifiers());
+    this.myth.setDirectorMultiplier(this.runPlan.mythRollMult);
+    this.reality.setFractureBoost(this.runPlan.fractureBoost);
 
     const showWatcher = this.save.save.worldMemory.gridSync >= GRID_SYNC.THRESHOLDS.WATCHER
       && !this.save.save.worldMemory.watcherDefeated;
@@ -282,6 +311,8 @@ export class GameScene extends BaseScene {
     this.runCredits = 0;
     this.scoreBoostTimer = 0;
     this.bgPulsePhase = 0;
+    this.slowMoScale = 1;
+    this.slowMoTimer = 0;
     this.ghostContainer = null;
     this.ghostBonusTimer = 0;
 
@@ -338,9 +369,17 @@ export class GameScene extends BaseScene {
   override update(dt: number): void {
     if (this.gameOver || this.paused || this.countdownActive || this.gamePausedForEvent) return;
 
+    if (this.slowMoTimer > 0) {
+      this.slowMoTimer -= dt;
+      if (this.slowMoTimer <= 0) this.slowMoScale = 1;
+    } else if (this.slowMoScale < 1) {
+      this.slowMoScale = lerp(this.slowMoScale, 1, dt * 5);
+      if (this.slowMoScale > 0.98) this.slowMoScale = 1;
+    }
+
     const timeScale = this.activePowerups.some((p) => p.type === 'chronos')
       ? POWERUP.CHRONOS_FACTOR : 1;
-    const scaledDt = dt * timeScale;
+    const scaledDt = dt * timeScale * this.slowMoScale;
 
     this.timeAlive += dt;
     this.distance += this.spawner.getScrollSpeed() * scaledDt * 0.01;
@@ -354,6 +393,22 @@ export class GameScene extends BaseScene {
     this.reality.update(dt, this.combo.getCombo(), this.score);
     this.sentient.update(dt, this.combo.getCombo(), this.timeAlive, this.isNearDeath());
     this.gridSync.onCombo(this.combo.getCombo());
+    this.director.update(dt, {
+      combo: this.combo.getCombo(),
+      score: this.score,
+      timeAlive: this.timeAlive,
+      nearDeath: this.isNearDeath(),
+      nearMisses: this.nearMisses,
+      flow: this.reality.getFlowRatio(),
+      struggle: this.reality.getStruggleRatio(),
+      lane: this.playerLane,
+    });
+    this.ghostReplay.setLaneCenters(this.laneCenters, this.playerY);
+    this.ghostReplay.record(this.timeAlive, this.playerLane);
+    const ghostStatus = this.ghostReplay.update(scaledDt, this.timeAlive);
+    if (ghostStatus.ahead && this.timeAlive > 30 && Math.random() < dt * 0.008) {
+      this.events.emit('ui:toast', { message: 'Your echo falls behind.', type: 'info' });
+    }
     this.myth.update(dt, this.timeAlive);
     this.sentient.onComboHigh(this.combo.getCombo());
     this.reality.setPunishLanes(this.sentient.shouldPunishLeftHabit(), this.sentient.shouldPunishRightHabit());
@@ -754,6 +809,10 @@ export class GameScene extends BaseScene {
       if (lateralDist < 100) {
         this.nearMissChecked.add(entity.id);
         this.nearMisses++;
+        this.save.recordNearMissLifetime();
+        if (lateralDist < 55 && this.spawner.getSpeedMultiplier() > 1.5) {
+          this.director.onNearMissClutch();
+        }
         this.addScore(SCORING.NEAR_MISS_BONUS);
         this.popScore(this.playerX, this.playerY - 30, SCORING.NEAR_MISS_BONUS, COLORS.gold);
         this.audio.playNearMiss();
@@ -926,6 +985,7 @@ export class GameScene extends BaseScene {
 
   private collectScoreBoost(entityId: number): void {
     this.spawner.removeEntity(entityId);
+    this.director.onRiskChoice(false);
     this.scoreBoostTimer = PICKUP.SCORE_BOOST_DURATION;
     this.audio.playPowerup();
     this.particles.burst(this.playerX, this.playerY, COLORS.gold, 18, 220);
@@ -940,6 +1000,7 @@ export class GameScene extends BaseScene {
 
   private collectBomb(entityId: number): void {
     this.spawner.removeEntity(entityId);
+    this.director.onRiskChoice(true);
     this.subtractScore(PICKUP.BOMB_PENALTY, this.playerX, this.playerY - 20);
     this.audio.playComboBreak();
     this.shakeAmount = Math.max(this.shakeAmount, 14);
@@ -1042,6 +1103,15 @@ export class GameScene extends BaseScene {
 
     const syncCompleted = this.gridSync.finalizeRun(stats);
 
+    const modeKey = stats.mode === 'timeAttack60' ? 'timeAttack60'
+      : stats.mode === 'timeAttack120' ? 'timeAttack120'
+      : stats.mode === 'challenge' ? 'challenge' : 'endless';
+    const best = this.save.save.highScores[modeKey as keyof typeof this.save.save.highScores];
+    const ghost = this.ghostReplay.finalize(stats.score, best);
+    if (ghost) this.save.saveGhostReplay(ghost);
+    this.director.finalizeRun(stats.score, stats.timeAlive, stats.mode);
+    this.ghostReplay.destroy();
+
     setTimeout(() => {
       this.events.emit('game:over', { stats });
       this.achievements.check(stats);
@@ -1065,6 +1135,10 @@ export class GameScene extends BaseScene {
         layer.alpha = 0.7 + Math.sin(this.bgPulsePhase * 0.5) * 0.15;
       } else if (label === 'lane-glow') {
         layer.alpha = 0.85 + Math.sin(this.bgPulsePhase * 1.2) * 0.15;
+      } else if (label === 'weather') {
+        layer.y += speed * dt * 0.08;
+        if (layer.y > 30) layer.y -= 30;
+        layer.alpha = 0.75 + Math.sin(this.bgPulsePhase * 0.9) * 0.15;
       }
     }
   }

@@ -16,6 +16,7 @@ export class AudioManager {
   private pauseDucked = false;
   private save: SaveManager;
   private intensity = 0;
+  private gridMood = 'curious';
 
   constructor(save: SaveManager) {
     this.save = save;
@@ -210,6 +211,17 @@ export class AudioManager {
       setTimeout(() => this.playTone(f, 0.2, 'sine', 0.2), i * 100);
     });
     setTimeout(() => this.playNoise(0.2, 0.12), 500);
+  }
+
+  setGridMood(mood: string): void {
+    this.gridMood = mood;
+    if (!this.musicFilter || !this.ctx) return;
+    const freq = mood === 'aggressive' ? 700 : mood === 'respectful' ? 1400 : mood === 'testing' ? 1000 : 1200;
+    this.musicFilter.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.4);
+  }
+
+  getGridMood(): string {
+    return this.gridMood;
   }
 
   setIntensity(value: number): void {
