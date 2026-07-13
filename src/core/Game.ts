@@ -123,6 +123,7 @@ export class Game {
     this.audio.resume();
     this.currentMode = mode;
     this.isPaused = false;
+    this.input.setEnabled(true);
 
     const config: GameConfig = { mode };
     if (mode === 'challenge') {
@@ -132,20 +133,29 @@ export class Game {
 
     this.ui.showScreen('hud');
     this.scenes.switchTo('game', config);
+
+    // Focus canvas so keyboard works immediately on desktop
+    this.app.canvas.setAttribute('tabindex', '0');
+    this.app.canvas.style.outline = 'none';
+    requestAnimationFrame(() => this.app.canvas.focus());
   }
 
   private pauseGame(): void {
     this.isPaused = true;
     this.gameScene.setPaused(true);
+    this.input.setEnabled(false);
     this.ui.showPause();
   }
 
   private resumeGame(): void {
     this.isPaused = false;
     this.gameScene.setPaused(false);
+    this.input.setEnabled(true);
+    requestAnimationFrame(() => this.app.canvas.focus());
   }
 
   private handleGameOver(stats: RunStats): void {
+    this.input.setEnabled(false);
     const { newHighScore, xpGained } = this.save.recordRun(stats);
     this.ui.showScreen('gameover', { ...stats, newHighScore, xpGained });
   }
@@ -153,8 +163,13 @@ export class Game {
   private goToMenu(): void {
     this.isPaused = false;
     this.audio.stopMusic();
-    this.scenes.switchTo('game'); // keep scene but show menu overlay
-    this.gameScene.exit();
+    this.input.setEnabled(false);
+
+    if (this.scenes.getCurrentId() === 'game') {
+      this.gameScene.exit();
+      this.gameScene.getContainer().visible = false;
+    }
+
     this.ui.showScreen('menu');
   }
 

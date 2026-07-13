@@ -89,6 +89,7 @@ export class GameScene extends BaseScene {
   override enter(data?: unknown): void {
     const cfg = data as GameConfig;
     this.config = cfg ?? { mode: 'endless' };
+    this.bindInput();
     this.resetGame();
     this.events.emit('game:start', { mode: this.config.mode });
     this.audio.startMusic();
@@ -96,16 +97,25 @@ export class GameScene extends BaseScene {
 
   override exit(): void {
     this.audio.stopMusic();
-    this.unsubscribers.forEach((u) => u());
-    this.unsubscribers = [];
+    this.unbindInput();
     this.clearEntities();
   }
 
   override async init(): Promise<void> {
+    // Input bindings are attached per run in enter()
+  }
+
+  private bindInput(): void {
+    this.unbindInput();
     this.unsubscribers.push(
       this.events.on('player:move', (d) => this.moveLane(d.lane)),
       this.events.on('player:phase', (d) => this.handlePhase(d.active)),
     );
+  }
+
+  private unbindInput(): void {
+    this.unsubscribers.forEach((u) => u());
+    this.unsubscribers = [];
   }
 
   setPaused(value: boolean): void {
