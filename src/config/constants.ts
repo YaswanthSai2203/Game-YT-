@@ -80,9 +80,10 @@ export const PLAYER = {
 } as const;
 
 export const SCROLL = {
+  MIN_SPEED: 220,
   BASE_SPEED: 280,
-  MAX_SPEED: 700,
-  ACCELERATION: 3.5,
+  MAX_SPEED: 780,
+  RAMP_DURATION: 120,
   PARALLAX_LAYERS: 3,
 } as const;
 

@@ -74,6 +74,7 @@ export class GameScene extends BaseScene {
   private shakeAmount = 0;
   private nearMissChecked = new Set<number>();
   private milestonesHit = new Set<number>();
+  private speedTiersHit = new Set<number>();
   private runCredits = 0;
   private phaseCooldownBase: number = PLAYER.PHASE_COOLDOWN;
 
@@ -197,6 +198,7 @@ export class GameScene extends BaseScene {
     this.nearMisses = 0;
     this.nearMissChecked.clear();
     this.milestonesHit.clear();
+    this.speedTiersHit.clear();
     this.runCredits = 0;
 
     if (this.upgrades.hasStartShield()) {
@@ -286,11 +288,12 @@ export class GameScene extends BaseScene {
     this.checkCollisions();
     this.checkNearMisses();
     this.checkMilestones();
+    this.checkSpeedTiers();
     this.updateGrid(scaledDt);
     this.updateHUD();
     this.applyScreenShake();
 
-    const intensity = clamp(this.spawner.getElapsed() / 120, 0, 1);
+    const intensity = this.spawner.getSpeedRatio();
     this.audio.setIntensity(intensity);
 
     if (!this.save.settings.reducedMotion) {
@@ -478,6 +481,27 @@ export class GameScene extends BaseScene {
     }
   }
 
+  private checkSpeedTiers(): void {
+    const mult = this.spawner.getSpeedMultiplier();
+    const tiers: [number, string][] = [
+      [1.3, '⚡ VELOCITY ×1.3'],
+      [1.6, '⚡ VELOCITY ×1.6'],
+      [2.0, '🔥 VELOCITY ×2.0'],
+      [2.5, '💨 VELOCITY ×2.5'],
+      [3.0, '🚀 MAX OVERDRIVE'],
+    ];
+    for (const [threshold, label] of tiers) {
+      const key = Math.round(threshold * 10);
+      if (mult >= threshold && !this.speedTiersHit.has(key)) {
+        this.speedTiersHit.add(key);
+        this.events.emit('ui:toast', { message: label, type: 'milestone' });
+        if (!this.save.settings.reducedMotion) {
+          this.shakeAmount = Math.max(this.shakeAmount, 4);
+        }
+      }
+    }
+  }
+
   private handleFirewallHit(entityId: number): void {
     if (this.phaseActive) {
       this.spawner.removeEntity(entityId);
@@ -630,5 +654,11 @@ export class GameScene extends BaseScene {
     const combo = this.combo.getCombo();
     if (combo <= 1) return '';
     return `COMBO ×${this.combo.getMultiplier().toFixed(1)}`;
+  }
+  getSpeedMultiplier(): number {
+    return this.spawner.getSpeedMultiplier();
+  }
+  getSpeedRatio(): number {
+    return this.spawner.getSpeedRatio();
   }
 }

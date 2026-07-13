@@ -1,6 +1,6 @@
 import type { PowerupType } from '@/types';
 import { DIFFICULTY, POWERUP, SCROLL } from '@/config/constants';
-import { createRng, randomInt } from '@/utils/math';
+import { createRng, randomInt, lerp, smoothstep } from '@/utils/math';
 
 export type SpawnEntityType = 'firewall' | 'shard' | 'powerup' | 'vault';
 
@@ -24,10 +24,11 @@ export class SpawnerSystem {
   private elapsed = 0;
   private rng: () => number;
   private scrollSpeed: number;
+  private speedRatio = 0;
 
   constructor(seed?: number) {
     this.rng = seed !== undefined ? createRng(seed) : Math.random;
-    this.scrollSpeed = SCROLL.BASE_SPEED;
+    this.scrollSpeed = SCROLL.MIN_SPEED;
   }
 
   getEntities(): SpawnedEntity[] {
@@ -38,6 +39,16 @@ export class SpawnerSystem {
     return this.scrollSpeed;
   }
 
+  /** 0 at run start → 1 at max speed */
+  getSpeedRatio(): number {
+    return this.speedRatio;
+  }
+
+  /** Display multiplier e.g. 1.0 → 2.8 */
+  getSpeedMultiplier(): number {
+    return this.scrollSpeed / SCROLL.MIN_SPEED;
+  }
+
   getElapsed(): number {
     return this.elapsed;
   }
@@ -46,12 +57,15 @@ export class SpawnerSystem {
     this.scrollSpeed = speed;
   }
 
+  private updateScrollSpeed(): void {
+    const t = this.elapsed / SCROLL.RAMP_DURATION;
+    this.speedRatio = smoothstep(t);
+    this.scrollSpeed = lerp(SCROLL.MIN_SPEED, SCROLL.MAX_SPEED, this.speedRatio);
+  }
+
   update(dt: number, gameWidth: number): void {
     this.elapsed += dt;
-    this.scrollSpeed = Math.min(
-      SCROLL.BASE_SPEED + Math.max(0, this.elapsed - 10) * SCROLL.ACCELERATION,
-      SCROLL.MAX_SPEED,
-    );
+    this.updateScrollSpeed();
 
     for (const e of this.entities) {
       if (!e.active) continue;
@@ -63,16 +77,17 @@ export class SpawnerSystem {
 
     this.entities = this.entities.filter((e) => e.active);
 
-    const interval = Math.max(
+    const interval = lerp(
+      DIFFICULTY.SPAWN_INTERVAL_BASE,
       DIFFICULTY.SPAWN_INTERVAL_MIN,
-      DIFFICULTY.SPAWN_INTERVAL_BASE - this.elapsed * 0.005,
+      this.speedRatio,
     );
 
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
       this.spawnPattern();
-      const warmup = this.elapsed < 25;
-      this.spawnTimer = warmup ? Math.max(interval, 1.4) : interval;
+      const warmup = this.elapsed < 20;
+      this.spawnTimer = warmup ? Math.max(interval, 1.3) : interval;
     }
   }
 
@@ -84,8 +99,7 @@ export class SpawnerSystem {
   }
 
   private spawnPattern(): void {
-    // Gentle onboarding: easy patterns only for first 25 seconds
-    if (this.elapsed < 25) {
+    if (this.elapsed < 20) {
       this.spawnWarmupPattern();
       return;
     }
@@ -219,5 +233,7 @@ export class SpawnerSystem {
     this.entities = [];
     this.spawnTimer = 0;
     this.elapsed = 0;
+    this.speedRatio = 0;
+    this.scrollSpeed = SCROLL.MIN_SPEED;
   }
 }

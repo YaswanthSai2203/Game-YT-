@@ -134,12 +134,14 @@ export class UIManager {
     this.overlay.querySelectorAll('.modal-layer').forEach((el) => el.remove());
   }
 
-  updateHUD(stats: { score: number; timeAlive: number; timeLimit: number; combo: string; phase: number; powerups: string[] }): void {
+  updateHUD(stats: { score: number; timeAlive: number; timeLimit: number; combo: string; phase: number; powerups: string[]; speed?: number; speedRatio?: number }): void {
     const scoreEl = this.overlay.querySelector('#hud-score');
     const timeEl = this.overlay.querySelector('#hud-time');
     const comboEl = this.overlay.querySelector('#hud-combo');
     const phaseEl = this.overlay.querySelector('#hud-phase-fill') as HTMLElement;
     const powerupsEl = this.overlay.querySelector('#hud-powerups');
+    const speedEl = this.overlay.querySelector('#hud-speed');
+    const speedFill = this.overlay.querySelector('#hud-speed-fill') as HTMLElement;
 
     if (scoreEl) scoreEl.textContent = formatScore(stats.score);
     if (timeEl) {
@@ -156,6 +158,12 @@ export class UIManager {
       powerupsEl.innerHTML = stats.powerups.map((p) =>
         `<span class="powerup-badge" aria-label="${p} powerup active">${p[0].toUpperCase()}</span>`,
       ).join('');
+    }
+    if (speedEl && stats.speed !== undefined) {
+      speedEl.textContent = `×${stats.speed.toFixed(1)}`;
+    }
+    if (speedFill && stats.speedRatio !== undefined) {
+      speedFill.style.width = `${stats.speedRatio * 100}%`;
     }
   }
 
@@ -289,6 +297,11 @@ export class UIManager {
       </div>
       <div class="hud-bottom">
         <span id="hud-combo" class="hud-combo" aria-live="polite"></span>
+        <div class="hud-speed-row">
+          <span class="hud-label-sm">VEL</span>
+          <span id="hud-speed" class="hud-speed">×1.0</span>
+          <div class="speed-bar"><div id="hud-speed-fill" class="speed-fill"></div></div>
+        </div>
         <div class="hud-phase">
           <span class="hud-label-sm">PHASE</span>
           <div class="phase-bar"><div id="hud-phase-fill" class="phase-fill"></div></div>
@@ -739,6 +752,10 @@ export class UIManager {
       .hud-time { font-family: 'Orbitron', sans-serif; font-size: 1.2rem; font-weight: 600; }
       .hud-bottom { width: 100%; padding-bottom: env(safe-area-inset-bottom, 8px); }
       .hud-combo { font-family: 'Orbitron', sans-serif; font-size: 1.1rem; color: var(--color-neonGold); font-weight: 700; display: block; margin-bottom: 8px; }
+      .hud-speed-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+      .hud-speed { font-family: 'Orbitron', sans-serif; font-size: 0.85rem; color: var(--color-neonCyan); font-weight: 700; min-width: 36px; }
+      .speed-bar { flex: 1; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; max-width: 100px; }
+      .speed-fill { height: 100%; background: linear-gradient(90deg, var(--color-neonCyan), var(--color-neonMagenta)); border-radius: 2px; transition: width 0.3s ease-out; box-shadow: 0 0 8px rgba(0,240,255,0.4); width: 0%; }
       .hud-phase { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
       .hud-label-sm { font-size: 0.6rem; color: var(--color-textSecondary); letter-spacing: 0.1em; }
       .phase-bar { flex: 1; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; max-width: 120px; }

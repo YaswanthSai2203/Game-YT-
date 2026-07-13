@@ -139,6 +139,8 @@ export class Game {
       combo: this.gameScene.getComboDisplay(),
       phase: this.gameScene.getPhaseRatio(),
       powerups: combo.map((p) => p.type),
+      speed: this.gameScene.getSpeedMultiplier(),
+      speedRatio: this.gameScene.getSpeedRatio(),
     });
   }
 
