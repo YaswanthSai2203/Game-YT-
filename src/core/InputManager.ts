@@ -7,11 +7,15 @@ export class InputManager {
   private touchStartY = 0;
   private touchStartTime = 0;
   private phaseActive = false;
-  private enabled = true;
+  private enabled = false;
   private sensitivity = 1.0;
   private gamepadIndex: number | null = null;
   private lastLaneInput = 0;
-  private readonly LANE_DEBOUNCE = 150;
+  private readonly LANE_DEBOUNCE = 120;
+  private readonly gameplayKeys = new Set([
+    'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+    'KeyA', 'KeyD', 'KeyW', 'KeyS', 'Space',
+  ]);
 
   constructor(bus: EventBus) {
     this.bus = bus;
@@ -31,8 +35,10 @@ export class InputManager {
   }
 
   private bindEvents(): void {
-    window.addEventListener('keydown', this.onKeyDown);
-    window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('keydown', this.onKeyDown, true);
+    window.addEventListener('keyup', this.onKeyUp, true);
+    document.addEventListener('keydown', this.onKeyDown, true);
+    document.addEventListener('keyup', this.onKeyUp, true);
     window.addEventListener('touchstart', this.onTouchStart, { passive: true });
     window.addEventListener('touchend', this.onTouchEnd, { passive: true });
     window.addEventListener('pointerdown', this.onPointerDown);
@@ -69,37 +75,36 @@ export class InputManager {
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if (!this.enabled) return;
+    if (!this.gameplayKeys.has(e.code)) return;
+
     this.keys.add(e.code);
+    e.preventDefault();
+    e.stopPropagation();
 
     const now = Date.now();
-    if (now - this.lastLaneInput < this.LANE_DEBOUNCE / this.sensitivity) {
-      if (e.code === 'Space' || e.code === 'KeyW' || e.code === 'ArrowUp') {
-        e.preventDefault();
-        this.phaseActive = true;
-        this.bus.emit('player:phase', { active: true });
-      }
-      return;
-    }
 
     switch (e.code) {
       case 'ArrowLeft':
       case 'KeyA':
-        e.preventDefault();
-        this.emitLane(-1);
-        this.lastLaneInput = now;
+        if (now - this.lastLaneInput >= this.LANE_DEBOUNCE / this.sensitivity) {
+          this.emitLane(-1);
+          this.lastLaneInput = now;
+        }
         break;
       case 'ArrowRight':
       case 'KeyD':
-        e.preventDefault();
-        this.emitLane(1);
-        this.lastLaneInput = now;
+        if (now - this.lastLaneInput >= this.LANE_DEBOUNCE / this.sensitivity) {
+          this.emitLane(1);
+          this.lastLaneInput = now;
+        }
         break;
       case 'Space':
       case 'KeyW':
       case 'ArrowUp':
-        e.preventDefault();
-        this.phaseActive = true;
-        this.bus.emit('player:phase', { active: true });
+        if (!this.phaseActive) {
+          this.phaseActive = true;
+          this.bus.emit('player:phase', { active: true });
+        }
         break;
     }
   };
@@ -168,8 +173,10 @@ export class InputManager {
   }
 
   destroy(): void {
-    window.removeEventListener('keydown', this.onKeyDown);
-    window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('keydown', this.onKeyDown, true);
+    window.removeEventListener('keyup', this.onKeyUp, true);
+    document.removeEventListener('keydown', this.onKeyDown, true);
+    document.removeEventListener('keyup', this.onKeyUp, true);
     window.removeEventListener('touchstart', this.onTouchStart);
     window.removeEventListener('touchend', this.onTouchEnd);
     window.removeEventListener('pointerdown', this.onPointerDown);

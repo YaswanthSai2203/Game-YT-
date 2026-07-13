@@ -242,7 +242,7 @@ export class UIManager {
         </div>
         <div id="hud-powerups" class="hud-powerups"></div>
       </div>
-      <div class="hud-hint">◄ SWIPE / TAP LANES ► · HOLD CENTER TO PHASE</div>
+      <div class="hud-hint">◄ A / ← · D / → ► · SPACE / W = PHASE · ESC = PAUSE</div>
     `;
 
     this.overlay.querySelector('#hud-pause')?.addEventListener('click', () => {
