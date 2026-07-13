@@ -158,6 +158,16 @@ export function createParticle(color: number, size: number): Graphics {
   return g;
 }
 
+export function createWhiteFirewall(width: number, height: number): Container {
+  const container = new Container();
+  const g = new Graphics();
+  g.roundRect(-width / 2, -height / 2, width, height, 4);
+  g.fill({ color: 0xffffff, alpha: 0.92 });
+  g.stroke({ color: COLORS.cyan, width: 2, alpha: 0.9 });
+  container.addChild(g);
+  return container;
+}
+
 export function createFloatingText(text: string, color: number, size: number): Container {
   const container = new Container();
   const bg = new Graphics();

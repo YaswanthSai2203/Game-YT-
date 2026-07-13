@@ -4,7 +4,9 @@ export type FractureRule =
   | 'shifting_lanes'
   | 'firewall_titan'
   | 'chrono_corridor'
-  | 'vault_rush';
+  | 'vault_rush'
+  | 'adaptive_protocol'
+  | 'null_zone';
 
 export type RareEventType =
   | 'golden_storm'
@@ -82,6 +84,26 @@ export const REALITY_DIMENSIONS: RealityDimensionDef[] = [
     tint: 'rgba(255,215,0,0.25)',
     duration: 14,
     musicPitch: 1.15,
+  },
+  {
+    id: 'adaptive_protocol',
+    name: 'ADAPTIVE PROTOCOL',
+    subtitle: 'The grid rewrote itself because you changed',
+    rule: 'adaptive_protocol',
+    theme: 'ghost',
+    tint: 'rgba(255,255,255,0.15)',
+    duration: 20,
+    musicPitch: 1.0,
+  },
+  {
+    id: 'null_zone',
+    name: 'NULL ZONE',
+    subtitle: 'This dimension should not exist',
+    rule: 'null_zone',
+    theme: 'quantum',
+    tint: 'rgba(0,0,0,0.6)',
+    duration: 25,
+    musicPitch: 0.6,
   },
 ];
 

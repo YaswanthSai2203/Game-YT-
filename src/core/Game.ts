@@ -12,6 +12,7 @@ import { SceneManager } from '@/core/SceneManager';
 import { GameScene } from '@/scenes/GameScene';
 import { UIManager } from '@/ui/UIManager';
 import { clamp } from '@/utils/math';
+import { FAKE_ENDING_SCORE } from '@/config/sentientConfig';
 
 export class Game {
   private app!: Application;
@@ -198,7 +199,20 @@ export class Game {
     this.input.setEnabled(false);
     this.setCanvasVisible(false);
     const { newHighScore, xpGained, creditsEarned, syncUnlocks } = this.save.recordRun(stats);
-    this.ui.showScreen('gameover', { ...stats, newHighScore, xpGained, creditsEarned, syncUnlocks });
+    const mem = this.save.save.worldMemory;
+
+    const showOver = (): void => {
+      this.ui.showScreen('gameover', { ...stats, newHighScore, xpGained, creditsEarned, syncUnlocks });
+    };
+
+    if (stats.score >= FAKE_ENDING_SCORE && !mem.fakeEndingSeen) {
+      void this.ui.playFakeEnding(stats.score).then(() => {
+        this.save.markFakeEndingSeen();
+        showOver();
+      });
+    } else {
+      showOver();
+    }
   }
 
   private goToMenu(): void {

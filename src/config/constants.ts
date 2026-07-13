@@ -3,8 +3,8 @@ import type { GameMode } from '@/types';
 export const GAME = {
   TITLE: 'NEON PULSE',
   SUBTITLE: 'QUANTUM RUN',
-  VERSION: '1.1.0',
-  SAVE_VERSION: 2,
+  VERSION: '1.2.0',
+  SAVE_VERSION: 3,
   TARGET_FPS: 60,
   MAX_DELTA: 1 / 30,
 } as const;
@@ -168,6 +168,6 @@ export const CORE_COLORS: Record<string, number> = {
   quantum: COLORS.gold,
 };
 
-export const STORAGE_KEY = 'neon-pulse-save-v2';
+export const STORAGE_KEY = 'neon-pulse-save-v3';
 
 export const LEADERBOARD_SIZE = 10;
