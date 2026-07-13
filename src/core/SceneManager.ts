@@ -54,6 +54,14 @@ export class SceneManager {
     }
   }
 
+  leaveCurrent(): void {
+    if (!this.current) return;
+    this.current.exit();
+    this.current.getContainer().visible = false;
+    this.current = null;
+    this.currentId = null;
+  }
+
   update(dt: number): void {
     this.current?.update(dt);
   }

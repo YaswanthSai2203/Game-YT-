@@ -112,6 +112,10 @@ export class GameScene extends BaseScene {
     this.audio.stopMusic();
     this.unbindInput();
     this.clearEntities();
+    this.container.removeChildren();
+    this.container.x = 0;
+    this.container.y = 0;
+    this.gameOver = true;
   }
 
   override async init(): Promise<void> {

@@ -87,6 +87,7 @@ export class Game {
 
   private async bootSequence(): Promise<void> {
     this.audio.init();
+    this.setCanvasVisible(false);
 
     await this.delay(400);
     this.ui.showScreen('splash');
@@ -146,6 +147,7 @@ export class Game {
     this.currentMode = mode;
     this.isPaused = false;
     this.input.setEnabled(true);
+    this.setCanvasVisible(true);
 
     const config: GameConfig = { mode };
     if (mode === 'challenge') {
@@ -177,6 +179,7 @@ export class Game {
 
   private handleGameOver(stats: RunStats): void {
     this.input.setEnabled(false);
+    this.setCanvasVisible(false);
     const { newHighScore, xpGained, creditsEarned } = this.save.recordRun(stats);
     this.ui.showScreen('gameover', { ...stats, newHighScore, xpGained, creditsEarned });
   }
@@ -185,14 +188,15 @@ export class Game {
     this.isPaused = false;
     this.audio.stopMusic();
     this.input.setEnabled(false);
-
-    if (this.scenes.getCurrentId() === 'game') {
-      this.gameScene.exit();
-      this.gameScene.getContainer().visible = false;
-    }
-
+    this.setCanvasVisible(false);
+    this.scenes.leaveCurrent();
     this.ui.showScreen('menu');
     this.ui.showDailyBonusIfAvailable();
+  }
+
+  private setCanvasVisible(visible: boolean): void {
+    this.app.canvas.style.visibility = visible ? 'visible' : 'hidden';
+    this.gameScene.getContainer().visible = visible;
   }
 
   private onResize = (): void => {

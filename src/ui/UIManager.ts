@@ -664,6 +664,7 @@ export class UIManager {
         justify-content: center;
         padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
         -webkit-overflow-scrolling: touch;
+        background: rgba(10, 14, 26, 0.97);
       }
       .screen-hud { pointer-events: none; flex-direction: column; justify-content: space-between; padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
       .screen-hud .hud-pause { pointer-events: auto; }
@@ -747,6 +748,9 @@ export class UIManager {
       .hud-hint { text-align: center; font-size: 0.65rem; color: var(--color-textSecondary); opacity: 0.5; pointer-events: none; padding-bottom: 4px; }
 
       /* Modals */
+      .screen-gameover, .screen-settings, .screen-achievements, .screen-leaderboard, .screen-daily, .screen-upgrades {
+        background: rgba(10, 14, 26, 0.92);
+      }
       .modal-layer {
         position: absolute; inset: 0; z-index: 200;
         display: flex; align-items: center; justify-content: center;
