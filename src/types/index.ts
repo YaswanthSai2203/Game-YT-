@@ -182,6 +182,7 @@ export type EventMap = {
   'analytics:track': AnalyticsEvent;
   'ui:toast': { message: string; type?: string };
   'ui:flash': { color?: string; duration?: number };
+  'ui:hype': { title: string; subtitle?: string; tier?: number; color?: 'cyan' | 'gold' | 'magenta' | 'violet' };
   'ui:tutorial': { step: number };
   'milestone:reach': { label: string };
 };

@@ -148,6 +148,25 @@ export class AudioManager {
       this.playTone(440, 0.08, 'square', 0.2);
     }
   }
+  playHype(tier: number): void {
+    const t = Math.max(1, Math.min(5, tier));
+    const base = 330 + t * 80;
+    this.playTone(base, 0.1, 'square', 0.22);
+    setTimeout(() => this.playTone(base * 1.25, 0.1, 'square', 0.2), 70);
+    setTimeout(() => this.playTone(base * 1.5, 0.15, 'sine', 0.28), 140);
+    if (t >= 3) {
+      setTimeout(() => this.playTone(base * 2, 0.2, 'triangle', 0.18), 220);
+    }
+    if (t >= 4) {
+      this.playNoise(0.12, 0.12);
+    }
+  }
+  playVaultJackpot(): void {
+    [440, 554, 659, 880, 1108].forEach((f, i) => {
+      setTimeout(() => this.playTone(f, 0.18, 'square', 0.28), i * 90);
+    });
+    setTimeout(() => this.playNoise(0.2, 0.15), 400);
+  }
 
   setIntensity(value: number): void {
     const prev = this.intensity;
