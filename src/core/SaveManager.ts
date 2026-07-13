@@ -1,7 +1,7 @@
 import type { SaveData, GameSettings, RunStats, LeaderboardEntry, WorldMemory } from '@/types';
 import { STORAGE_KEY, GAME, LEADERBOARD_SIZE, SYNC, CREDITS } from '@/config/constants';
 import { getTodayDateString, getWeekId, hashString } from '@/utils/math';
-import { SentientAISystem } from '@/systems/SentientAISystem';
+import { GridSyncSystem } from '@/systems/GridSyncSystem';
 import { EventBus } from './EventBus';
 
 const LEGACY_STORAGE_KEY = 'neon-pulse-save-v1';
@@ -20,8 +20,12 @@ function defaultWorldMemory(): WorldMemory {
     lastDeathSeconds: 0,
     lastDeathScore: 0,
     dimensionLastSeen: {},
+    dimensionsEntered: [],
     mythsWitnessed: [],
     aiTrust: 0,
+    gridSync: 0,
+    gridSyncComplete: false,
+    earlyQuits: 0,
     worldStage: 0,
     communityHexIndex: hexIndex,
     adaptiveUnlocked: false,
@@ -103,7 +107,11 @@ function migrateSave(parsed: Partial<SaveData>): SaveData {
     lastDailyBonusDate: parsed.lastDailyBonusDate ?? '',
     worldMemory: { ...defaultWorldMemory(), ...parsed.worldMemory },
   };
-  merged.worldMemory.worldStage = SentientAISystem.computeWorldStage(merged.stats.totalRuns);
+  merged.worldMemory.worldStage = GridSyncSystem.computeWorldStage(merged.worldMemory.gridSync ?? 0);
+  if (!merged.worldMemory.dimensionsEntered) merged.worldMemory.dimensionsEntered = [];
+  if (merged.worldMemory.gridSync === undefined) merged.worldMemory.gridSync = 0;
+  if (merged.worldMemory.gridSyncComplete === undefined) merged.worldMemory.gridSyncComplete = false;
+  if (merged.worldMemory.earlyQuits === undefined) merged.worldMemory.earlyQuits = 0;
   return merged;
 }
 
@@ -258,7 +266,7 @@ export class SaveManager {
     if (stats.timeAlive > m.longestRunSeconds) {
       m.longestRunSeconds = stats.timeAlive;
     }
-    m.worldStage = SentientAISystem.computeWorldStage(this.data.stats.totalRuns + 1);
+    m.worldStage = GridSyncSystem.computeWorldStage(m.gridSync);
     this.persist();
   }
 
@@ -333,7 +341,7 @@ export class SaveManager {
     const creditsEarned = stats.creditsEarned ?? stats.shards * CREDITS.PER_SHARD;
     this.data.dataCredits += creditsEarned;
 
-    this.data.worldMemory.worldStage = SentientAISystem.computeWorldStage(this.data.stats.totalRuns);
+    this.data.worldMemory.worldStage = GridSyncSystem.computeWorldStage(this.data.worldMemory.gridSync);
     if (stats.timeAlive > this.data.worldMemory.longestRunSeconds) {
       this.data.worldMemory.longestRunSeconds = stats.timeAlive;
     }

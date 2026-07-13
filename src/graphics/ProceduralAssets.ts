@@ -1,12 +1,30 @@
 import { Graphics, Container } from 'pixi.js';
 import { COLORS, CORE_COLORS } from '@/config/constants';
 
-export function createPlayerCore(radius: number, color: number): Container {
+export function createPlayerCore(radius: number, color: number, coreId?: string): Container {
   const container = new Container();
+  const isGridBound = coreId === 'grid-bound';
+
   const glow = new Graphics();
-  glow.circle(0, 0, radius * 1.8);
-  glow.fill({ color, alpha: 0.15 });
+  glow.circle(0, 0, radius * (isGridBound ? 2.2 : 1.8));
+  glow.fill({ color, alpha: isGridBound ? 0.22 : 0.15 });
   container.addChild(glow);
+
+  if (isGridBound) {
+    const ring = new Graphics();
+    ring.circle(0, 0, radius * 1.35);
+    ring.stroke({ color: 0xff006e, width: 1.5, alpha: 0.55 });
+    container.addChild(ring);
+
+    const lattice = new Graphics();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * Math.PI * 2) / 6;
+      lattice.moveTo(0, 0);
+      lattice.lineTo(Math.cos(angle) * radius * 1.1, Math.sin(angle) * radius * 1.1);
+      lattice.stroke({ color: 0x00f0ff, width: 1, alpha: 0.35 });
+    }
+    container.addChild(lattice);
+  }
 
   const hex = new Graphics();
   const sides = 6;
@@ -15,14 +33,18 @@ export function createPlayerCore(radius: number, color: number): Container {
     const angle = (i * Math.PI * 2) / sides;
     hex.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
   }
-  hex.fill({ color, alpha: 0.9 });
-  hex.stroke({ color: 0xffffff, width: 1.5, alpha: 0.5 });
+  hex.fill({ color, alpha: isGridBound ? 0.95 : 0.9 });
+  hex.stroke({ color: isGridBound ? 0x00f0ff : 0xffffff, width: isGridBound ? 2 : 1.5, alpha: isGridBound ? 0.85 : 0.5 });
   container.addChild(hex);
 
   const inner = new Graphics();
   inner.circle(0, 0, radius * 0.35);
-  inner.fill({ color: 0xffffff, alpha: 0.8 });
+  inner.fill({ color: isGridBound ? 0xff006e : 0xffffff, alpha: isGridBound ? 0.9 : 0.8 });
   container.addChild(inner);
+
+  if (isGridBound) {
+    container.label = 'grid-bound-core';
+  }
 
   return container;
 }

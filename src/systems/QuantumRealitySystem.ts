@@ -68,6 +68,7 @@ export class QuantumRealitySystem {
   private shardTimestamps: number[] = [];
 
   private adaptiveUnlocked = false;
+  private hiddenDimensionsUnlocked = false;
 
   constructor(events: EventBus, seed?: number) {
     this.events = events;
@@ -76,6 +77,10 @@ export class QuantumRealitySystem {
 
   initAdaptive(unlocked: boolean): void {
     this.adaptiveUnlocked = unlocked;
+  }
+
+  setHiddenDimensionsUnlocked(unlocked: boolean): void {
+    this.hiddenDimensionsUnlocked = unlocked;
   }
 
   setPunishLanes(left: boolean, right: boolean): void {
@@ -294,7 +299,7 @@ export class QuantumRealitySystem {
 
     const pool = REALITY_DIMENSIONS.filter((d) => {
       if (d.id === 'adaptive_protocol' && !this.adaptiveUnlocked) return false;
-      if (d.id === 'null_zone') return false;
+      if (d.id === 'null_zone' && !this.hiddenDimensionsUnlocked) return false;
       return !this.usedDimensionIds.has(d.id);
     });
     const choices = pool.length > 0 ? pool : REALITY_DIMENSIONS;

@@ -166,6 +166,7 @@ export const CORE_COLORS: Record<string, number> = {
   magenta: COLORS.magenta,
   violet: COLORS.violet,
   quantum: COLORS.gold,
+  'grid-bound': 0x00f0ff,
 };
 
 export const STORAGE_KEY = 'neon-pulse-save-v3';

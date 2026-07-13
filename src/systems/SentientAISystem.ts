@@ -1,4 +1,4 @@
-import { AI_COMMENTS, ADAPTIVE_PROTOCOL, WORLD_EVOLUTION } from '@/config/sentientConfig';
+import { AI_COMMENTS, ADAPTIVE_PROTOCOL, GRID_SYNC } from '@/config/sentientConfig';
 import { SaveManager } from '@/core/SaveManager';
 import { EventBus } from '@/core/EventBus';
 
@@ -32,8 +32,9 @@ export class SentientAISystem {
     this.runStarted = true;
     const mem = this.save.save.worldMemory;
     const runs = this.save.save.stats.totalRuns;
+    const whispersEnabled = mem.gridSync >= GRID_SYNC.THRESHOLDS.WHISPERS;
 
-    if (runs >= 5) {
+    if (runs >= 5 && whispersEnabled) {
       const lines: string[] = [];
       if (mem.lastDeathSeconds > 0 && mem.lastDeathDate) {
         const days = Math.floor(
@@ -61,20 +62,21 @@ export class SentientAISystem {
       }
     }
 
-    if (runs >= 10 && Math.random() < 0.25) {
+    if (runs >= 10 && whispersEnabled && Math.random() < 0.25) {
       this.speak(this.pick(AI_COMMENTS.early), 'whisper');
     }
   }
 
   update(dt: number, combo: number, timeAlive: number, nearDeath: boolean): void {
     if (!this.runStarted) return;
+    const mem = this.save.save.worldMemory;
+    if (mem.gridSync < GRID_SYNC.THRESHOLDS.WHISPERS) return;
     this.speakCooldown -= dt;
     if (this.speakCooldown > 0) return;
 
     const runs = this.save.save.stats.totalRuns;
     if (runs < 8) return;
 
-    const mem = this.save.save.worldMemory;
     let spoke = false;
 
     if (combo >= 12 && Math.random() < 0.12) {
@@ -177,11 +179,13 @@ export class SentientAISystem {
       mem.adaptiveUnlocked = true;
       mem.aiTrust = Math.min(100, mem.aiTrust + 20);
       this.save.persist();
-      this.speak('You changed your pattern. Adaptive Protocol unlocked.', 'glitch');
+      this.speak('The Grid acknowledges your adaptation. Adaptive Protocol unlocked.', 'glitch');
       this.events.emit('ai:speak', {
-        text: 'A new dimension opens — because you adapted.',
+        text: 'A fracture opens — because you learned.',
         tone: 'glitch',
       });
+      this.events.emit('grid:habit_broken', {});
+      this.events.emit('grid:adaptive_unlock', {});
     }
   }
 
@@ -198,10 +202,7 @@ export class SentientAISystem {
   }
 
   static computeWorldStage(totalRuns: number): number {
-    let stage = 0;
-    for (const e of WORLD_EVOLUTION) {
-      if (totalRuns >= e.runs) stage = e.stage;
-    }
-    return stage;
+    void totalRuns;
+    return 0;
   }
 }

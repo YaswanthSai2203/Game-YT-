@@ -69,7 +69,7 @@ export class Game {
 
     this.scenes = new SceneManager(this.app, this.events);
     this.gameScene = new GameScene(this.events, this.audio, this.save, this.achievements, this.upgrades);
-    this.gameScene.setOnComplete((stats) => this.handleGameOver(stats));
+    this.gameScene.setOnComplete((stats, syncCompleted) => this.handleGameOver(stats, syncCompleted));
     this.scenes.register(this.gameScene);
 
     window.addEventListener('resize', this.onResize);
@@ -195,7 +195,7 @@ export class Game {
     requestAnimationFrame(() => this.app.canvas.focus());
   }
 
-  private handleGameOver(stats: RunStats): void {
+  private handleGameOver(stats: RunStats, syncCompleted = false): void {
     this.input.setEnabled(false);
     this.setCanvasVisible(false);
     const { newHighScore, xpGained, creditsEarned, syncUnlocks } = this.save.recordRun(stats);
@@ -204,6 +204,11 @@ export class Game {
     const showOver = (): void => {
       this.ui.showScreen('gameover', { ...stats, newHighScore, xpGained, creditsEarned, syncUnlocks });
     };
+
+    if (syncCompleted) {
+      void this.ui.playGridSyncComplete().then(() => this.goToMenu());
+      return;
+    }
 
     if (stats.score >= FAKE_ENDING_SCORE && !mem.fakeEndingSeen) {
       void this.ui.playFakeEnding(stats.score).then(() => {
@@ -216,6 +221,9 @@ export class Game {
   }
 
   private goToMenu(): void {
+    if (this.scenes.getCurrentId() === 'game' && !this.gameScene.isGameOver()) {
+      this.gameScene.abandonRunEarly();
+    }
     this.isPaused = false;
     this.audio.stopMusic();
     this.input.setEnabled(false);
