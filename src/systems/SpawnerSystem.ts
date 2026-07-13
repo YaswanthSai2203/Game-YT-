@@ -1,9 +1,9 @@
 import type { PowerupType } from '@/types';
 import type { RealityModifiers } from '@/systems/QuantumRealitySystem';
-import { DIFFICULTY, POWERUP, SCROLL } from '@/config/constants';
+import { DIFFICULTY, POWERUP, PICKUP, SCROLL } from '@/config/constants';
 import { createRng, randomInt, lerp, smoothstep } from '@/utils/math';
 
-export type SpawnEntityType = 'firewall' | 'shard' | 'powerup' | 'vault' | 'white_firewall';
+export type SpawnEntityType = 'firewall' | 'shard' | 'powerup' | 'vault' | 'white_firewall' | 'score_boost' | 'bomb';
 
 export interface SpawnedEntity {
   id: number;
@@ -184,6 +184,18 @@ export class SpawnerSystem {
       }
     }
 
+    if (this.elapsed >= PICKUP.MIN_SPAWN_TIME) {
+      const lane = randomInt(0, 2);
+      if (!this.isLaneBlocked(lane)) {
+        const roll = this.rng();
+        if (roll < PICKUP.BONUS_SPAWN_CHANCE) {
+          this.spawnEntity('score_boost', lane);
+        } else if (roll < PICKUP.BONUS_SPAWN_CHANCE + PICKUP.TRAP_SPAWN_CHANCE) {
+          this.spawnEntity('bomb', lane);
+        }
+      }
+    }
+
     const vaultChance = this.modifiers?.vaultChance ?? 0.005;
     if (this.elapsed > 40 && this.rng() < vaultChance) {
       this.spawnEntity('vault', randomInt(0, 2));
@@ -283,8 +295,8 @@ export class SpawnerSystem {
       type,
       lane,
       y: (this.modifiers?.reverseFlow ?? false) ? 800 : -60,
-      width: type === 'shard' ? 24 : type === 'powerup' ? 28 : 80,
-      height: type === 'firewall' ? 24 : type === 'vault' ? 40 : 24,
+      width: type === 'shard' ? 24 : type === 'powerup' ? 28 : type === 'score_boost' || type === 'bomb' ? 26 : 80,
+      height: type === 'firewall' ? 24 : type === 'vault' ? 40 : type === 'score_boost' || type === 'bomb' ? 26 : 24,
       collected: false,
       active: true,
       isGolden: golden && type === 'shard',

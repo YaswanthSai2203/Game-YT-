@@ -144,6 +144,8 @@ export class Game {
       speed: this.gameScene.getSpeedMultiplier(),
       speedRatio: this.gameScene.getSpeedRatio(),
       targetScore: this.gameScene.getTargetScore(),
+      scoreBoostRatio: this.gameScene.getScoreBoostRatio(),
+      scoreBoostActive: this.gameScene.hasScoreBoost(),
     });
   }
 
@@ -180,6 +182,7 @@ export class Game {
   }
 
   private pauseGame(): void {
+    if (this.isPaused || this.scenes.getCurrentId() !== 'game') return;
     this.isPaused = true;
     this.gameScene.setPaused(true);
     this.input.setEnabled(false);
@@ -235,6 +238,8 @@ export class Game {
 
   private setCanvasVisible(visible: boolean): void {
     this.app.canvas.style.visibility = visible ? 'visible' : 'hidden';
+    // Let HUD buttons receive clicks; keyboard input stays on the focused canvas.
+    this.app.canvas.style.pointerEvents = visible ? 'none' : 'auto';
     this.gameScene.getContainer().visible = visible;
   }
 
