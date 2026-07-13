@@ -121,7 +121,7 @@ export function createPowerupIcon(type: string, size: number): Container {
 
 export function createGridBackground(width: number, height: number, theme: string): Container {
   const container = new Container();
-  const lineColor = theme === 'inferno' ? 0x441100 : theme === 'matrix' ? 0x003300 : COLORS.gridLine;
+  const lineColor = theme === 'inferno' ? 0x441100 : theme === 'matrix' ? 0x003300 : theme === 'quantum' ? 0x220044 : theme === 'ghost' ? 0x330033 : theme === 'gold' ? 0x443300 : COLORS.gridLine;
 
   for (let layer = 0; layer < 3; layer++) {
     const layerContainer = new Container();
@@ -160,11 +160,33 @@ export function createParticle(color: number, size: number): Graphics {
 
 export function createFloatingText(text: string, color: number, size: number): Container {
   const container = new Container();
-  // PixiJS v8 text would need importing Text - use graphics placeholder
   const bg = new Graphics();
   bg.roundRect(-text.length * size * 0.3, -size * 0.6, text.length * size * 0.6, size * 1.2, 4);
   bg.fill({ color, alpha: 0.2 });
   container.addChild(bg);
   container.label = text;
+  return container;
+}
+
+export function createBossFirewall(width: number, height: number): Container {
+  const container = createFirewall(width, height);
+  const crown = new Graphics();
+  crown.moveTo(-width * 0.3, -height * 0.5);
+  crown.lineTo(0, -height * 0.9);
+  crown.lineTo(width * 0.3, -height * 0.5);
+  crown.stroke({ color: COLORS.gold, width: 3, alpha: 0.9 });
+  container.addChild(crown);
+  return container;
+}
+
+export function createGoldenShard(size: number): Container {
+  const container = createShard(size);
+  container.tint = COLORS.gold;
+  return container;
+}
+
+export function createGhostCore(radius: number): Container {
+  const container = createPlayerCore(radius, COLORS.magenta);
+  container.alpha = 0.45;
   return container;
 }

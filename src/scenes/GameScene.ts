@@ -17,7 +17,9 @@ import { FloatingTextSystem } from '@/systems/FloatingTextSystem';
 import {
   createPlayerCore, createFirewall, createShard,
   createPowerupIcon, createGridBackground, getCoreColor,
+  createBossFirewall, createGoldenShard, createGhostCore,
 } from '@/graphics/ProceduralAssets';
+import { QuantumRealitySystem } from '@/systems/QuantumRealitySystem';
 import { clamp, easeOutCubic, circleRectOverlap, lerp } from '@/utils/math';
 
 interface ActivePowerup {
@@ -38,6 +40,7 @@ export class GameScene extends BaseScene {
   private combo!: ComboSystem;
   private particles!: ParticleSystem;
   private floatingText!: FloatingTextSystem;
+  private reality!: QuantumRealitySystem;
 
   private gameWidth = 0;
   private gameHeight = 0;
@@ -49,6 +52,9 @@ export class GameScene extends BaseScene {
   private playerY = 0;
   private laneSwitchProgress = 1;
   private playerContainer!: Container;
+  private ghostContainer: Container | null = null;
+  private ghostLane = 1;
+  private ghostBonusTimer = 0;
   private playerScale = 1;
 
   private phaseActive = false;
@@ -105,7 +111,6 @@ export class GameScene extends BaseScene {
     this.config = cfg ?? { mode: 'endless' };
     this.bindInput();
     this.resetGame();
-    this.events.emit('game:start', { mode: this.config.mode });
     if (!this.save.save.tutorialCompleted) {
       this.events.emit('ui:tutorial', { step: 0 });
     }
@@ -131,6 +136,12 @@ export class GameScene extends BaseScene {
     this.unsubscribers.push(
       this.events.on('player:move', (d) => this.moveLane(d.lane)),
       this.events.on('player:phase', (d) => this.handlePhase(d.active)),
+      this.events.on('combo:break', (d) => this.reality?.onComboBreak(d.previousCombo)),
+      this.events.on('reality:fracture', (d) => this.onRealityFracture(d.theme, d.tint)),
+      this.events.on('reality:fracture_end', () => this.onRealityFractureEnd()),
+      this.events.on('reality:rare', (d) => this.onRareEvent(d.type)),
+      this.events.on('reality:rare_end', (d) => this.onRareEventEnd(d.type)),
+      this.events.on('reality:assist', () => this.spawner?.queueAssistShard()),
     );
   }
 
@@ -188,6 +199,8 @@ export class GameScene extends BaseScene {
     this.spawner = new SpawnerSystem(seed);
     this.spawner.spawnStarter();
     this.combo = new ComboSystem(this.events);
+    this.reality = new QuantumRealitySystem(this.events, seed);
+    this.reality.reset();
 
     this.phaseCooldownBase = PLAYER.PHASE_COOLDOWN * this.upgrades.getPhaseCooldownFactor();
 
@@ -223,6 +236,8 @@ export class GameScene extends BaseScene {
     this.comboHypeHit.clear();
     this.challengeComplete = false;
     this.runCredits = 0;
+    this.ghostContainer = null;
+    this.ghostBonusTimer = 0;
 
     if (this.upgrades.hasStartShield()) {
       this.hasShield = true;
@@ -231,6 +246,8 @@ export class GameScene extends BaseScene {
 
     const modeConf = MODE_CONFIG[this.config.mode];
     this.timeLimit = this.config.timeLimit ?? modeConf.timeLimit ?? 0;
+
+    this.events.emit('game:start', { mode: this.config.mode });
   }
 
   private moveLane(direction: number): void {
@@ -275,7 +292,11 @@ export class GameScene extends BaseScene {
     }
 
     this.updatePlayer(scaledDt);
+    this.reality.update(dt, this.combo.getCombo(), this.score);
+    this.spawner.setModifiers(this.reality.getModifiers());
     this.spawner.update(scaledDt, this.gameHeight);
+    this.updateLaneShift();
+    this.updateGhostRival(scaledDt);
     this.combo.update(dt);
     this.particles.update(dt);
     this.floatingText.update(dt);
@@ -288,14 +309,104 @@ export class GameScene extends BaseScene {
     this.checkSpeedTiers();
     this.updateGrid(scaledDt);
     this.applyScreenShake();
+    this.applyRealityGlitch();
     this.updatePlayerVisuals();
 
     const intensity = this.spawner.getSpeedRatio();
     this.audio.setIntensity(intensity);
+    this.audio.setRealityPitch(this.reality.getMusicPitch());
 
     if (!this.save.settings.reducedMotion) {
       this.particles.trail(this.playerX, this.playerY, getCoreColor(this.save.save.unlocks.selectedCore));
     }
+  }
+
+  private updateLaneShift(): void {
+    const base = [this.gameWidth * 0.2, this.gameWidth * 0.5, this.gameWidth * 0.8];
+    const shift = this.reality.getLaneShift(this.timeAlive);
+    this.laneCenters = base.map((x, i) => x + shift * (i === 1 ? 0.5 : i === 0 ? 1 : -1));
+  }
+
+  private updateGhostRival(dt: number): void {
+    if (!this.reality.isGhostRivalActive()) {
+      if (this.ghostContainer) {
+        this.container.removeChild(this.ghostContainer);
+        this.ghostContainer.destroy({ children: true });
+        this.ghostContainer = null;
+      }
+      return;
+    }
+
+    if (!this.ghostContainer) {
+      this.ghostContainer = createGhostCore(PLAYER.RADIUS * 0.9);
+      this.container.addChild(this.ghostContainer);
+      this.ghostLane = this.playerLane;
+    }
+
+    this.ghostLane = lerp(this.ghostLane, this.playerLane, dt * 0.8);
+    const ghostX = this.laneCenters[Math.round(this.ghostLane)] ?? this.laneCenters[1];
+    this.ghostContainer.x = ghostX;
+    this.ghostContainer.y = this.playerY - 140 + Math.sin(this.timeAlive * 4) * 8;
+    this.ghostContainer.alpha = 0.35 + Math.sin(this.timeAlive * 6) * 0.15;
+
+    const dist = Math.hypot(this.ghostContainer.x - this.playerX, this.ghostContainer.y - this.playerY);
+    if (dist < 50) {
+      this.reality.onCloseCall();
+      this.ghostContainer.y = this.playerY - 180;
+    }
+  }
+
+  private onRealityFracture(theme: string, _tint: string): void {
+    if (this.save.settings.reducedMotion) return;
+    this.shakeAmount = Math.max(this.shakeAmount, 10);
+    this.container.removeChild(this.gridBg);
+    this.gridBg.destroy({ children: true });
+    this.gridBg = createGridBackground(this.gameWidth, this.gameHeight, theme);
+    this.container.addChildAt(this.gridBg, 0);
+    this.audio.playFracture();
+  }
+
+  private onRealityFractureEnd(): void {
+    const theme = this.save.save.unlocks.selectedTheme;
+    this.container.removeChild(this.gridBg);
+    this.gridBg.destroy({ children: true });
+    this.gridBg = createGridBackground(this.gameWidth, this.gameHeight, theme);
+    this.container.addChildAt(this.gridBg, 0);
+    this.audio.setRealityPitch(1);
+  }
+
+  private onRareEvent(type: string): void {
+    if (type === 'quantum_vault') {
+      this.spawner.spawnQuantumVault(1);
+    }
+    if (type === 'ghost_rival') {
+      this.ghostBonusTimer = 0;
+    }
+    this.audio.playRareEvent();
+  }
+
+  private onRareEventEnd(type: string): void {
+    if (type === 'ghost_rival' && this.ghostBonusTimer >= 3) {
+      this.addScore(300, this.playerX, this.playerY - 40);
+      this.events.emit('ui:hype', {
+        title: 'RIVAL OUTRUN!',
+        subtitle: '+300 ghost bonus',
+        tier: 3,
+        color: 'magenta',
+      });
+    }
+  }
+
+  private applyRealityGlitch(): void {
+    if (this.save.settings.reducedMotion) return;
+    const g = this.reality.getGlitchIntensity();
+    if (g > 0.35) {
+      this.container.x += (Math.random() - 0.5) * g * 4;
+    }
+  }
+
+  private getShardValueMult(): number {
+    return this.reality.getModifiers().shardValueMult;
   }
 
   private updatePlayer(dt: number): void {
@@ -378,17 +489,19 @@ export class GameScene extends BaseScene {
       if (!graphic) {
         switch (entity.type) {
           case 'firewall':
-            graphic = createFirewall(entity.width, entity.height);
+            graphic = entity.isBoss
+              ? createBossFirewall(entity.width, entity.height)
+              : createFirewall(entity.width, entity.height);
             break;
           case 'shard':
-            graphic = createShard(14);
+            graphic = entity.isGolden ? createGoldenShard(14) : createShard(14);
             break;
           case 'powerup':
             graphic = createPowerupIcon(entity.powerupType ?? 'shield', 14);
             break;
           case 'vault':
-            graphic = createShard(22);
-            graphic.alpha = 0.8;
+            graphic = entity.isQuantumVault ? createGoldenShard(26) : createShard(22);
+            graphic.alpha = entity.isQuantumVault ? 1 : 0.8;
             break;
           default:
             continue;
@@ -462,9 +575,11 @@ export class GameScene extends BaseScene {
         case 'shard':
           this.collectShard(entity.id, SCORING.SHARD_BASE);
           break;
-        case 'vault':
-          this.collectShard(entity.id, SCORING.VAULT_BONUS, true);
+        case 'vault': {
+          const isQuantum = entity.isQuantumVault ?? false;
+          this.collectShard(entity.id, isQuantum ? SCORING.VAULT_BONUS * 2 : SCORING.VAULT_BONUS, true, isQuantum);
           break;
+        }
         case 'powerup':
           this.collectPowerup(entity.id, entity.powerupType!);
           break;
@@ -491,6 +606,7 @@ export class GameScene extends BaseScene {
         this.addScore(SCORING.NEAR_MISS_BONUS);
         this.popScore(this.playerX, this.playerY - 30, SCORING.NEAR_MISS_BONUS, COLORS.gold);
         this.audio.playNearMiss();
+        this.reality.onNearMiss();
         this.events.emit('ui:hype', { title: 'EDGE RUNNER!', subtitle: `+${SCORING.NEAR_MISS_BONUS} near miss`, tier: 2, color: 'gold' });
         this.shakeAmount = Math.max(this.shakeAmount, 5);
         this.particles.burst(this.playerX, this.playerY - 20, COLORS.gold, 12, 180);
@@ -569,17 +685,30 @@ export class GameScene extends BaseScene {
     this.endGame(true);
   }
 
-  private collectShard(entityId: number, baseValue: number, isVault = false): void {
+  private collectShard(entityId: number, baseValue: number, isVault = false, isQuantumVault = false): void {
     this.spawner.removeEntity(entityId);
     this.shards++;
     this.runCredits += 1;
     this.combo.hit();
-    const boosted = Math.floor(baseValue * this.upgrades.getShardMultiplier());
+    const boosted = Math.floor(baseValue * this.upgrades.getShardMultiplier() * this.getShardValueMult());
     const points = Math.floor(boosted * this.combo.getMultiplier());
     this.addScore(points, this.laneCenters[this.playerLane], this.playerY - 30);
+    this.reality.onShardCollect(this.combo.getCombo());
     this.audio.playShardCollect(this.combo.getCombo());
+    if (this.reality.isGhostRivalActive()) {
+      this.ghostBonusTimer++;
+    }
 
-    if (isVault) {
+    if (isQuantumVault) {
+      this.events.emit('ui:hype', {
+        title: 'QUANTUM VAULT!',
+        subtitle: 'Impossible cache breached',
+        tier: 5,
+        color: 'gold',
+      });
+      this.audio.playVaultJackpot();
+      this.shakeAmount = Math.max(this.shakeAmount, 16);
+    } else if (isVault) {
       this.events.emit('ui:hype', { title: 'VAULT JACKPOT!', subtitle: `+${points.toLocaleString()}`, tier: 5, color: 'gold' });
       this.audio.playVaultJackpot();
       this.shakeAmount = Math.max(this.shakeAmount, 14);
@@ -694,6 +823,7 @@ export class GameScene extends BaseScene {
       mode: this.config.mode,
       creditsEarned: this.runCredits,
       rankPercentile: estimateRankPercentile(this.score),
+      realitiesDiscovered: this.reality.getDiscoveredThisRun(),
     };
 
     setTimeout(() => {

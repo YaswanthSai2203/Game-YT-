@@ -86,6 +86,7 @@ export interface RunStats {
   mode: GameMode;
   creditsEarned?: number;
   rankPercentile?: number;
+  realitiesDiscovered?: string[];
 }
 
 export interface Unlocks {
@@ -185,4 +186,24 @@ export type EventMap = {
   'ui:hype': { title: string; subtitle?: string; tier?: number; color?: 'cyan' | 'gold' | 'magenta' | 'violet' };
   'ui:tutorial': { step: number };
   'milestone:reach': { label: string };
+  'reality:fracture': {
+    dimension: string;
+    subtitle: string;
+    rule: string;
+    theme: string;
+    tint: string;
+    duration: number;
+  };
+  'reality:fracture_end': { dimension: string };
+  'reality:rare': { type: string; name: string; subtitle: string; duration: number };
+  'reality:rare_end': { type: string };
+  'reality:state': {
+    flow: number;
+    struggle: number;
+    glitch: number;
+    dimension: string | null;
+    rare: string | null;
+    fractureProgress: number;
+  };
+  'reality:assist': { subtle: boolean };
 };
