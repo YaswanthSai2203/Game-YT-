@@ -79,9 +79,13 @@ export class UIManager {
     root.style.setProperty('--reduced-motion', s.reducedMotion ? '1' : '0');
     document.body.classList.toggle('light-theme', s.theme === 'light');
     document.body.classList.toggle('high-contrast', s.highContrast);
+    document.body.classList.toggle('reduced-motion', s.reducedMotion);
   }
 
   showScreen(id: ScreenId, data?: unknown): void {
+    if (id !== 'pause') {
+      this.removeModals();
+    }
     switch (id) {
       case 'loading': this.renderLoading(); break;
       case 'splash': this.renderSplash(); break;
@@ -100,10 +104,13 @@ export class UIManager {
   /** Show daily bonus popup if unclaimed; call after menu renders */
   showDailyBonusIfAvailable(): void {
     if (!this.save.canClaimDailyBonus()) return;
+    this.removeModals();
+
     const streak = this.save.save.daily.streak;
     const bonusPreview = 25 + Math.min(streak, 7) * 10;
+
     const modal = document.createElement('div');
-    modal.className = 'screen modal-overlay daily-bonus-modal';
+    modal.className = 'modal-layer daily-bonus-modal';
     modal.innerHTML = `
       <div class="modal panel animate-in">
         <h2 class="modal-title">DAILY SYNC BONUS</h2>
@@ -112,14 +119,19 @@ export class UIManager {
         <button class="btn btn-primary" data-action="claim">CLAIM</button>
       </div>
     `;
-    this.root.appendChild(modal);
+    this.overlay.appendChild(modal);
+
     modal.querySelector('[data-action="claim"]')?.addEventListener('click', () => {
       this.audio.playMenuConfirm();
       const bonus = this.save.claimDailyBonus();
-      this.showToast(`+${bonus} Data Credits claimed!`, 'achievement');
       modal.remove();
-      this.showScreen('menu');
+      this.showToast(`+${bonus} Data Credits claimed!`, 'achievement');
+      this.renderMenu();
     });
+  }
+
+  private removeModals(): void {
+    this.overlay.querySelectorAll('.modal-layer').forEach((el) => el.remove());
   }
 
   updateHUD(stats: { score: number; timeAlive: number; timeLimit: number; combo: string; phase: number; powerups: string[] }): void {
@@ -368,8 +380,9 @@ export class UIManager {
   }
 
   showPause(): void {
+    this.removeModals();
     const pauseEl = document.createElement('div');
-    pauseEl.className = 'screen screen-pause modal-overlay';
+    pauseEl.className = 'modal-layer screen-pause';
     pauseEl.innerHTML = `
       <div class="modal panel animate-in">
         <h2 class="modal-title">PAUSED</h2>
@@ -645,10 +658,18 @@ export class UIManager {
       #ui-overlay * { pointer-events: auto; }
 
       .screen { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+      .screen-menu {
+        overflow-y: auto; overflow-x: hidden;
+        align-items: flex-start;
+        justify-content: center;
+        padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+        -webkit-overflow-scrolling: touch;
+      }
       .screen-hud { pointer-events: none; flex-direction: column; justify-content: space-between; padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
       .screen-hud .hud-pause { pointer-events: auto; }
 
-      .animate-in { animation: ${'var(--reduced-motion)'} == 1 ? none : fadeScaleIn 0.4s ease-out; }
+      .animate-in { animation: fadeScaleIn 0.4s ease-out; }
+      body.reduced-motion .animate-in { animation: none; }
       @keyframes fadeScaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 
       /* Loading */
@@ -665,23 +686,31 @@ export class UIManager {
       @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.3); opacity: 0.5; } }
 
       /* Menu */
-      .menu-content { width: 100%; max-width: 480px; padding: 24px; text-align: center; }
-      .menu-title { font-family: 'Orbitron', sans-serif; font-size: 2.2rem; font-weight: 900; color: var(--color-neonCyan); text-shadow: 0 0 20px rgba(0,240,255,0.4); }
-      .menu-subtitle { font-family: 'Orbitron', sans-serif; letter-spacing: 0.4em; font-size: 0.75rem; color: var(--color-textSecondary); margin-bottom: 24px; }
+      .menu-content {
+        width: 100%; max-width: 520px; padding: 16px 20px 24px;
+        text-align: center; margin: auto;
+      }
+      .menu-header { margin-bottom: 16px; }
+      .menu-title { font-family: 'Orbitron', sans-serif; font-size: clamp(1.6rem, 5vw, 2.2rem); font-weight: 900; color: var(--color-neonCyan); text-shadow: 0 0 20px rgba(0,240,255,0.4); line-height: 1.1; }
+      .menu-subtitle { font-family: 'Orbitron', sans-serif; letter-spacing: 0.35em; font-size: 0.7rem; color: var(--color-textSecondary); margin-top: 8px; }
 
-      .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+      .mode-grid {
+        display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px; margin-bottom: 16px; width: 100%;
+      }
       .mode-card {
-        background: rgba(18,24,41,0.85); border: 1px solid rgba(0,240,255,0.15); border-radius: 12px;
-        padding: 16px 12px; cursor: pointer; transition: all 0.2s; text-align: left;
-        backdrop-filter: blur(8px);
+        background: rgba(18,24,41,0.92); border: 1px solid rgba(0,240,255,0.15); border-radius: 12px;
+        padding: 14px 12px; cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+        text-align: left; min-height: 80px; display: flex; flex-direction: column; justify-content: center;
+        backdrop-filter: blur(8px); width: 100%; box-sizing: border-box;
       }
       .mode-card:hover, .mode-card:focus { border-color: var(--color-neonCyan); box-shadow: 0 0 20px rgba(0,240,255,0.2); transform: translateY(-2px); }
-      .mode-card:nth-child(5) { grid-column: 1 / -1; }
-      .mode-label { display: block; font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 0.9rem; color: var(--color-neonCyan); }
-      .mode-desc { display: block; font-size: 0.75rem; color: var(--color-textSecondary); margin-top: 4px; }
-      .mode-best { display: block; font-size: 0.7rem; color: var(--color-neonGold); margin-top: 6px; }
+      .mode-card:nth-child(5) { grid-column: 1 / -1; max-width: 100%; }
+      .mode-label { display: block; font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 0.85rem; color: var(--color-neonCyan); line-height: 1.2; }
+      .mode-desc { display: block; font-size: 0.72rem; color: var(--color-textSecondary); margin-top: 4px; line-height: 1.3; }
+      .mode-best { display: block; font-size: 0.68rem; color: var(--color-neonGold); margin-top: 6px; }
 
-      .menu-nav { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
+      .menu-nav { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
 
       .sync-bar { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
       .sync-label { font-family: 'Orbitron', sans-serif; color: var(--color-neonViolet); white-space: nowrap; }
@@ -718,6 +747,12 @@ export class UIManager {
       .hud-hint { text-align: center; font-size: 0.65rem; color: var(--color-textSecondary); opacity: 0.5; pointer-events: none; padding-bottom: 4px; }
 
       /* Modals */
+      .modal-layer {
+        position: absolute; inset: 0; z-index: 200;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(10,14,26,0.85); backdrop-filter: blur(6px);
+        padding: 16px;
+      }
       .modal-overlay { background: rgba(10,14,26,0.75); backdrop-filter: blur(4px); }
       .panel {
         background: rgba(18,24,41,0.95); border: 1px solid rgba(0,240,255,0.2);
@@ -810,15 +845,17 @@ export class UIManager {
       body.high-contrast .btn-primary { border: 2px solid #fff; }
 
       @media (min-width: 768px) {
-        .mode-grid { grid-template-columns: repeat(3, 1fr); }
-        .mode-card:nth-child(5) { grid-column: auto; }
-        .menu-title { font-size: 2.8rem; }
+        .mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        .mode-card:nth-child(5) { grid-column: 1 / -1; }
+        .menu-title { font-size: 2.4rem; }
       }
       @media (orientation: landscape) and (max-height: 500px) {
-        .menu-content { padding: 12px; }
-        .menu-title { font-size: 1.6rem; }
-        .mode-grid { grid-template-columns: repeat(5, 1fr); }
-        .mode-card:nth-child(5) { grid-column: auto; }
+        .menu-content { padding: 8px 16px 12px; }
+        .menu-title { font-size: 1.4rem; }
+        .menu-subtitle { letter-spacing: 0.2em; margin-bottom: 8px; }
+        .mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+        .mode-card { min-height: 64px; padding: 10px; }
+        .mode-card:nth-child(5) { grid-column: 1 / -1; }
       }
     `;
     document.head.appendChild(style);
