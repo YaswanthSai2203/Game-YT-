@@ -8,6 +8,8 @@ import { EventBus } from '@/core/EventBus';
 import { AudioManager } from '@/core/AudioManager';
 import { SaveManager } from '@/core/SaveManager';
 import { AchievementManager } from '@/core/AchievementManager';
+import { UpgradeManager } from '@/core/UpgradeManager';
+import { estimateRankPercentile } from '@/core/SaveManager';
 import { SpawnerSystem } from '@/systems/SpawnerSystem';
 import { ComboSystem } from '@/systems/ComboSystem';
 import { ParticleSystem } from '@/systems/ParticleSystem';
@@ -27,6 +29,7 @@ export class GameScene extends BaseScene {
 
   private save: SaveManager;
   private achievements: AchievementManager;
+  private upgrades: UpgradeManager;
   private onComplete: ((stats: RunStats) => void) | null = null;
 
   private config: GameConfig = { mode: 'endless' };
@@ -58,6 +61,7 @@ export class GameScene extends BaseScene {
   private shards = 0;
   private phaseShifts = 0;
   private powerupsCollected = 0;
+  private nearMisses = 0;
   private distance = 0;
   private timeAlive = 0;
   private timeLimit = 0;
@@ -68,6 +72,10 @@ export class GameScene extends BaseScene {
   private comboText!: Text;
   private gridBg!: Container;
   private shakeAmount = 0;
+  private nearMissChecked = new Set<number>();
+  private milestonesHit = new Set<number>();
+  private runCredits = 0;
+  private phaseCooldownBase: number = PLAYER.PHASE_COOLDOWN;
 
   private unsubscribers: (() => void)[] = [];
 
@@ -76,10 +84,12 @@ export class GameScene extends BaseScene {
     audio: AudioManager,
     save: SaveManager,
     achievements: AchievementManager,
+    upgrades: UpgradeManager,
   ) {
     super(events, audio);
     this.save = save;
     this.achievements = achievements;
+    this.upgrades = upgrades;
   }
 
   setOnComplete(cb: (stats: RunStats) => void): void {
@@ -92,6 +102,9 @@ export class GameScene extends BaseScene {
     this.bindInput();
     this.resetGame();
     this.events.emit('game:start', { mode: this.config.mode });
+    if (!this.save.save.tutorialCompleted) {
+      this.events.emit('ui:tutorial', { step: 0 });
+    }
     this.audio.startMusic();
   }
 
@@ -147,7 +160,10 @@ export class GameScene extends BaseScene {
     const seed = this.config.seed
       ?? (this.config.mode === 'challenge' ? this.save.save.daily.todaySeed : undefined);
     this.spawner = new SpawnerSystem(seed);
+    this.spawner.spawnStarter();
     this.combo = new ComboSystem(this.events);
+
+    this.phaseCooldownBase = PLAYER.PHASE_COOLDOWN * this.upgrades.getPhaseCooldownFactor();
 
     this.playerLane = PLAYER.START_LANE;
     this.playerTargetLane = PLAYER.START_LANE;
@@ -174,6 +190,15 @@ export class GameScene extends BaseScene {
     this.phaseCooldown = 0;
     this.hasShield = false;
     this.shakeAmount = 0;
+    this.nearMisses = 0;
+    this.nearMissChecked.clear();
+    this.milestonesHit.clear();
+    this.runCredits = 0;
+
+    if (this.upgrades.hasStartShield()) {
+      this.hasShield = true;
+      this.activePowerups.push({ type: 'shield', timer: POWERUP.DURATION.shield });
+    }
 
     const modeConf = MODE_CONFIG[this.config.mode];
     this.timeLimit = this.config.timeLimit ?? modeConf.timeLimit ?? 0;
@@ -212,6 +237,10 @@ export class GameScene extends BaseScene {
       this.playerTargetLane = newLane;
       this.laneSwitchProgress = 0;
       this.audio.playLaneSwitch();
+      if (!this.save.save.tutorialCompleted) {
+        this.save.markTutorialComplete();
+        this.events.emit('ui:tutorial', { step: -1 });
+      }
     }
   }
 
@@ -220,7 +249,7 @@ export class GameScene extends BaseScene {
     if (active && this.phaseCooldown <= 0 && !this.phaseActive) {
       this.phaseActive = true;
       this.phaseTimer = PLAYER.PHASE_DURATION;
-      this.phaseCooldown = PLAYER.PHASE_COOLDOWN;
+      this.phaseCooldown = this.phaseCooldownBase;
       this.phaseShifts++;
       this.audio.playPhaseShift();
       this.particles.burst(this.playerX, this.playerY, COLORS.violet, 16, 250);
@@ -251,6 +280,8 @@ export class GameScene extends BaseScene {
     this.updatePhase(dt);
     this.syncEntities();
     this.checkCollisions();
+    this.checkNearMisses();
+    this.checkMilestones();
     this.updateGrid(scaledDt);
     this.updateHUD();
     this.applyScreenShake();
@@ -368,8 +399,9 @@ export class GameScene extends BaseScene {
         if (entity.type === 'powerup') {
           const magnetActive = this.activePowerups.some((p) => p.type === 'magnet');
           if (!magnetActive) continue;
+          const magnetRange = POWERUP.MAGNET_RANGE * this.upgrades.getMagnetRangeMultiplier();
           const dist = Math.abs(ex - this.playerX) + Math.abs(ey - this.playerY);
-          if (dist > POWERUP.MAGNET_RANGE) continue;
+          if (dist > magnetRange) continue;
         } else {
           continue;
         }
@@ -397,6 +429,47 @@ export class GameScene extends BaseScene {
         case 'powerup':
           this.collectPowerup(entity.id, entity.powerupType!);
           break;
+      }
+    }
+  }
+
+  private checkNearMisses(): void {
+    const pr = PLAYER.RADIUS;
+    for (const entity of this.spawner.getEntities()) {
+      if (!entity.active || entity.type !== 'firewall') continue;
+      if (entity.lane === this.playerLane) continue;
+      if (this.nearMissChecked.has(entity.id)) continue;
+
+      const ey = entity.y;
+      const passed = ey > this.playerY + pr && ey < this.playerY + pr + 40;
+      if (!passed) continue;
+
+      const ex = this.laneCenters[entity.lane];
+      const lateralDist = Math.abs(ex - this.playerX);
+      if (lateralDist < 100) {
+        this.nearMissChecked.add(entity.id);
+        this.nearMisses++;
+        this.addScore(SCORING.NEAR_MISS_BONUS);
+        this.events.emit('ui:toast', { message: `NEAR MISS +${SCORING.NEAR_MISS_BONUS}`, type: 'bonus' });
+        this.particles.burst(this.playerX, this.playerY - 20, COLORS.gold, 6, 120);
+      } else {
+        this.nearMissChecked.add(entity.id);
+      }
+    }
+  }
+
+  private checkMilestones(): void {
+    const checks: [number, string][] = [
+      [30, '⚡ 30 SECONDS — KEEP SYNCING'],
+      [60, '🔥 1 MINUTE — ON FIRE'],
+      [90, '💎 ELITE RUNNER'],
+      [120, '🏆 QUANTUM MASTER'],
+    ];
+    for (const [sec, label] of checks) {
+      if (this.timeAlive >= sec && !this.milestonesHit.has(sec)) {
+        this.milestonesHit.add(sec);
+        this.events.emit('milestone:reach', { label });
+        this.events.emit('ui:toast', { message: label, type: 'milestone' });
       }
     }
   }
@@ -430,10 +503,15 @@ export class GameScene extends BaseScene {
   private collectShard(entityId: number, baseValue: number): void {
     this.spawner.removeEntity(entityId);
     this.shards++;
+    this.runCredits += 1;
     this.combo.hit();
-    const points = Math.floor(baseValue * this.combo.getMultiplier());
+    const boosted = Math.floor(baseValue * this.upgrades.getShardMultiplier());
+    const points = Math.floor(boosted * this.combo.getMultiplier());
     this.addScore(points);
     this.audio.playShardCollect(this.combo.getCombo());
+    if (this.combo.getCombo() === 5) {
+      this.events.emit('ui:toast', { message: '🔗 COMBO ×3.0 — NICE!', type: 'combo' });
+    }
     if (this.combo.getCombo() > 1 && this.combo.getCombo() % 5 === 0) {
       this.audio.playComboUp();
     }
@@ -481,7 +559,10 @@ export class GameScene extends BaseScene {
       timeAlive: this.timeAlive,
       phaseShifts: this.phaseShifts,
       powerups: this.powerupsCollected,
+      nearMisses: this.nearMisses,
       mode: this.config.mode,
+      creditsEarned: this.runCredits,
+      rankPercentile: estimateRankPercentile(this.score),
     };
 
     setTimeout(() => {
@@ -537,7 +618,7 @@ export class GameScene extends BaseScene {
   isGameOver(): boolean { return this.gameOver; }
   getPhaseRatio(): number {
     return this.phaseCooldown > 0
-      ? 1 - this.phaseCooldown / PLAYER.PHASE_COOLDOWN
+      ? 1 - this.phaseCooldown / this.phaseCooldownBase
       : 1;
   }
   getActivePowerups(): ActivePowerup[] { return this.activePowerups; }

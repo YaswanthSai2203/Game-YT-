@@ -49,7 +49,7 @@ export class SpawnerSystem {
   update(dt: number, gameWidth: number): void {
     this.elapsed += dt;
     this.scrollSpeed = Math.min(
-      SCROLL.BASE_SPEED + this.elapsed * SCROLL.ACCELERATION,
+      SCROLL.BASE_SPEED + Math.max(0, this.elapsed - 10) * SCROLL.ACCELERATION,
       SCROLL.MAX_SPEED,
     );
 
@@ -71,11 +71,25 @@ export class SpawnerSystem {
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
       this.spawnPattern();
-      this.spawnTimer = interval;
+      const warmup = this.elapsed < 25;
+      this.spawnTimer = warmup ? Math.max(interval, 1.4) : interval;
     }
   }
 
+  /** Spawn immediate onboarding pickups for fast first engagement */
+  spawnStarter(): void {
+    this.spawnEntity('shard', 1);
+    this.spawnEntity('shard', 0);
+    this.spawnTimer = 1.0;
+  }
+
   private spawnPattern(): void {
+    // Gentle onboarding: easy patterns only for first 25 seconds
+    if (this.elapsed < 25) {
+      this.spawnWarmupPattern();
+      return;
+    }
+
     const patternLevel = DIFFICULTY.PATTERN_UNLOCK_TIME.filter((t) => this.elapsed >= t).length;
 
     switch (patternLevel) {
@@ -106,6 +120,18 @@ export class SpawnerSystem {
 
     if (this.elapsed > 60 && this.rng() < 0.005) {
       this.spawnEntity('vault', 1);
+    }
+  }
+
+  private spawnWarmupPattern(): void {
+    const roll = this.rng();
+    if (roll < 0.5) {
+      const shardLane = randomInt(0, 2);
+      this.spawnEntity('shard', shardLane);
+      const fwLane = (shardLane + 1 + randomInt(0, 1)) % 3;
+      if (fwLane !== shardLane) this.spawnEntity('firewall', fwLane);
+    } else {
+      this.spawnEntity('shard', randomInt(0, 2));
     }
   }
 

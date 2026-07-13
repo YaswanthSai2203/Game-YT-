@@ -3,10 +3,66 @@ import type { GameMode } from '@/types';
 export const GAME = {
   TITLE: 'NEON PULSE',
   SUBTITLE: 'QUANTUM RUN',
-  VERSION: '1.0.0',
-  SAVE_VERSION: 1,
+  VERSION: '1.1.0',
+  SAVE_VERSION: 2,
   TARGET_FPS: 60,
   MAX_DELTA: 1 / 30,
+} as const;
+
+export type UpgradeId = 'shardBoost' | 'phaseSync' | 'magnetField' | 'coreShield';
+
+export const UPGRADES: Record<UpgradeId, {
+  name: string;
+  description: string;
+  maxLevel: number;
+  costBase: number;
+  costScale: number;
+  effectPerLevel: number;
+  icon: string;
+}> = {
+  shardBoost: {
+    name: 'Data Amplifier',
+    description: '+12% shard points per level',
+    maxLevel: 5,
+    costBase: 40,
+    costScale: 1.6,
+    effectPerLevel: 0.12,
+    icon: '💎',
+  },
+  phaseSync: {
+    name: 'Phase Sync',
+    description: '-10% phase cooldown per level',
+    maxLevel: 5,
+    costBase: 60,
+    costScale: 1.7,
+    effectPerLevel: 0.10,
+    icon: '🌊',
+  },
+  magnetField: {
+    name: 'Magnet Field',
+    description: '+20% magnet range per level',
+    maxLevel: 3,
+    costBase: 80,
+    costScale: 2.0,
+    effectPerLevel: 0.20,
+    icon: '🧲',
+  },
+  coreShield: {
+    name: 'Core Shield',
+    description: 'Start each run with a shield',
+    maxLevel: 1,
+    costBase: 200,
+    costScale: 1,
+    effectPerLevel: 1,
+    icon: '🛡️',
+  },
+};
+
+export const CREDITS = {
+  PER_SHARD: 1,
+  DAILY_BASE: 25,
+  DAILY_STREAK_BONUS: 10,
+  DAILY_STREAK_CAP: 7,
 } as const;
 
 export const LANES = {
@@ -103,6 +159,6 @@ export const CORE_COLORS: Record<string, number> = {
   quantum: COLORS.gold,
 };
 
-export const STORAGE_KEY = 'neon-pulse-save-v1';
+export const STORAGE_KEY = 'neon-pulse-save-v2';
 
 export const LEADERBOARD_SIZE = 10;

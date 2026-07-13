@@ -1,7 +1,9 @@
 import type { SaveData, GameSettings, RunStats, LeaderboardEntry } from '@/types';
-import { STORAGE_KEY, GAME, LEADERBOARD_SIZE, SYNC } from '@/config/constants';
+import { STORAGE_KEY, GAME, LEADERBOARD_SIZE, SYNC, CREDITS } from '@/config/constants';
 import { getTodayDateString, getWeekId, hashString } from '@/utils/math';
 import { EventBus } from './EventBus';
+
+const LEGACY_STORAGE_KEY = 'neon-pulse-save-v1';
 
 function defaultSave(): SaveData {
   const today = getTodayDateString();
@@ -52,7 +54,39 @@ function defaultSave(): SaveData {
       bestScore: 0,
       seed: hashString(getWeekId()),
     },
+    dataCredits: 0,
+    upgrades: { shardBoost: 0, phaseSync: 0, magnetField: 0, coreShield: 0 },
+    tutorialCompleted: false,
+    lastDailyBonusDate: '',
   };
+}
+
+function migrateSave(parsed: Partial<SaveData>): SaveData {
+  const base = defaultSave();
+  return {
+    ...base,
+    ...parsed,
+    version: GAME.SAVE_VERSION,
+    dataCredits: parsed.dataCredits ?? 0,
+    upgrades: parsed.upgrades ?? base.upgrades,
+    tutorialCompleted: parsed.tutorialCompleted ?? false,
+    lastDailyBonusDate: parsed.lastDailyBonusDate ?? '',
+  };
+}
+
+/** Estimate local rank percentile from score (for motivational game-over UI) */
+export function estimateRankPercentile(score: number): number {
+  if (score >= 25000) return 99;
+  if (score >= 15000) return 95;
+  if (score >= 10000) return 90;
+  if (score >= 7500) return 80;
+  if (score >= 5000) return 70;
+  if (score >= 3000) return 55;
+  if (score >= 1500) return 40;
+  if (score >= 750) return 25;
+  if (score >= 300) return 15;
+  if (score >= 100) return 8;
+  return 3;
 }
 
 export class SaveManager {
@@ -74,11 +108,17 @@ export class SaveManager {
 
   load(): SaveData {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      let raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+      }
       if (raw) {
-        const parsed = JSON.parse(raw) as SaveData;
+        const parsed = JSON.parse(raw) as Partial<SaveData>;
         if (parsed.version === GAME.SAVE_VERSION) {
-          return { ...defaultSave(), ...parsed };
+          return migrateSave(parsed);
+        }
+        if (parsed.version === 1 || !parsed.version) {
+          return migrateSave(parsed);
         }
       }
     } catch {
@@ -122,7 +162,34 @@ export class SaveManager {
     return unlocked;
   }
 
-  recordRun(stats: RunStats): { newHighScore: boolean; xpGained: number } {
+  markTutorialComplete(): void {
+    this.data.tutorialCompleted = true;
+    this.persist();
+  }
+
+  /** Returns bonus credits if claimable today, else 0 */
+  claimDailyBonus(): number {
+    const today = getTodayDateString();
+    if (this.data.lastDailyBonusDate === today) return 0;
+
+    const streakBonus = Math.min(this.data.daily.streak, CREDITS.DAILY_STREAK_CAP) * CREDITS.DAILY_STREAK_BONUS;
+    const bonus = CREDITS.DAILY_BASE + streakBonus;
+    this.data.dataCredits += bonus;
+    this.data.lastDailyBonusDate = today;
+    this.persist();
+    return bonus;
+  }
+
+  canClaimDailyBonus(): boolean {
+    return this.data.lastDailyBonusDate !== getTodayDateString();
+  }
+
+  addCredits(amount: number): void {
+    this.data.dataCredits += amount;
+    this.persist();
+  }
+
+  recordRun(stats: RunStats): { newHighScore: boolean; xpGained: number; creditsEarned: number } {
     this.data.stats.totalRuns++;
     this.data.stats.totalShards += stats.shards;
     this.data.stats.totalScore += stats.score;
@@ -180,7 +247,10 @@ export class SaveManager {
       this.data.weekly.bestScore = stats.score;
     }
 
+    const creditsEarned = stats.creditsEarned ?? stats.shards * CREDITS.PER_SHARD;
+    this.data.dataCredits += creditsEarned;
+
     this.persist();
-    return { newHighScore, xpGained };
+    return { newHighScore, xpGained, creditsEarned };
   }
 }

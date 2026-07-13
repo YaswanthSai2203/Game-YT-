@@ -4,6 +4,7 @@ import { GAME } from '@/config/constants';
 import { EventBus } from '@/core/EventBus';
 import { SaveManager } from '@/core/SaveManager';
 import { AchievementManager } from '@/core/AchievementManager';
+import { UpgradeManager } from '@/core/UpgradeManager';
 import { AnalyticsManager } from '@/core/AnalyticsManager';
 import { InputManager } from '@/core/InputManager';
 import { AudioManager } from '@/core/AudioManager';
@@ -16,6 +17,7 @@ export class Game {
   private app!: Application;
   private events = new EventBus();
   private save!: SaveManager;
+  private upgrades!: UpgradeManager;
   private achievements!: AchievementManager;
   private analytics!: AnalyticsManager;
   private input!: InputManager;
@@ -35,11 +37,15 @@ export class Game {
   }
 
   async init(): Promise<void> {
+    this.save = new SaveManager(this.events);
+    this.upgrades = new UpgradeManager(this.save, this.events);
+
     this.ui = new UIManager(
       this.container,
       this.events,
-      this.save = new SaveManager(this.events),
+      this.save,
       this.achievements = new AchievementManager(this.events, this.save),
+      this.upgrades,
       this.audio = new AudioManager(this.save),
     );
 
@@ -61,7 +67,7 @@ export class Game {
     this.input.setSensitivity(this.save.settings.controlSensitivity);
 
     this.scenes = new SceneManager(this.app, this.events);
-    this.gameScene = new GameScene(this.events, this.audio, this.save, this.achievements);
+    this.gameScene = new GameScene(this.events, this.audio, this.save, this.achievements, this.upgrades);
     this.gameScene.setOnComplete((stats) => this.handleGameOver(stats));
     this.scenes.register(this.gameScene);
 
@@ -82,14 +88,30 @@ export class Game {
   private async bootSequence(): Promise<void> {
     this.audio.init();
 
-    await this.delay(800);
+    await this.delay(400);
     this.ui.showScreen('splash');
-    await this.delay(2000);
+
+    await Promise.race([
+      this.delay(1200),
+      this.waitForSplashSkip(),
+    ]);
 
     this.goToMenu();
     this.running = true;
     this.lastTime = performance.now();
     this.app.ticker.add(this.gameLoop);
+  }
+
+  private waitForSplashSkip(): Promise<void> {
+    return new Promise((resolve) => {
+      const skip = (): void => {
+        window.removeEventListener('keydown', skip);
+        this.container.removeEventListener('click', skip);
+        resolve();
+      };
+      window.addEventListener('keydown', skip, { once: true });
+      this.container.addEventListener('click', skip, { once: true });
+    });
   }
 
   private gameLoop = (): void => {
@@ -134,7 +156,6 @@ export class Game {
     this.ui.showScreen('hud');
     this.scenes.switchTo('game', config);
 
-    // Focus canvas so keyboard works immediately on desktop
     this.app.canvas.setAttribute('tabindex', '0');
     this.app.canvas.style.outline = 'none';
     requestAnimationFrame(() => this.app.canvas.focus());
@@ -156,8 +177,8 @@ export class Game {
 
   private handleGameOver(stats: RunStats): void {
     this.input.setEnabled(false);
-    const { newHighScore, xpGained } = this.save.recordRun(stats);
-    this.ui.showScreen('gameover', { ...stats, newHighScore, xpGained });
+    const { newHighScore, xpGained, creditsEarned } = this.save.recordRun(stats);
+    this.ui.showScreen('gameover', { ...stats, newHighScore, xpGained, creditsEarned });
   }
 
   private goToMenu(): void {
@@ -171,6 +192,7 @@ export class Game {
     }
 
     this.ui.showScreen('menu');
+    this.ui.showDailyBonusIfAvailable();
   }
 
   private onResize = (): void => {

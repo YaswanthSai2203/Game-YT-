@@ -82,7 +82,10 @@ export interface RunStats {
   timeAlive: number;
   phaseShifts: number;
   powerups: number;
+  nearMisses: number;
   mode: GameMode;
+  creditsEarned?: number;
+  rankPercentile?: number;
 }
 
 export interface Unlocks {
@@ -109,6 +112,15 @@ export interface WeeklyState {
   seed: number;
 }
 
+export type UpgradeId = 'shardBoost' | 'phaseSync' | 'magnetField' | 'coreShield';
+
+export interface UpgradeLevels {
+  shardBoost: number;
+  phaseSync: number;
+  magnetField: number;
+  coreShield: number;
+}
+
 export interface SaveData {
   version: number;
   profile: PlayerProfile;
@@ -120,6 +132,10 @@ export interface SaveData {
   unlocks: Unlocks;
   daily: DailyState;
   weekly: WeeklyState;
+  dataCredits: number;
+  upgrades: UpgradeLevels;
+  tutorialCompleted: boolean;
+  lastDailyBonusDate: string;
 }
 
 export interface GameConfig {
@@ -163,4 +179,7 @@ export type EventMap = {
   'achievement:unlock': { id: string; title: string };
   'settings:change': { settings: Partial<GameSettings> };
   'analytics:track': AnalyticsEvent;
+  'ui:toast': { message: string; type?: string };
+  'ui:tutorial': { step: number };
+  'milestone:reach': { label: string };
 };
