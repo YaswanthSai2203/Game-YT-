@@ -1,8 +1,9 @@
 import type { SaveData, GameSettings, RunStats, LeaderboardEntry, WorldMemory } from '@/types';
 import { STORAGE_KEY, GAME, LEADERBOARD_SIZE, SYNC, CREDITS, WEEKLY } from '@/config/constants';
 import { getTodayDateString, getWeekId, hashString } from '@/utils/math';
-import { GridSyncSystem } from '@/systems/GridSyncSystem';
+import { HUD_SKINS, MUSIC_PACKS, AI_PERSONALITIES } from '@/config/engagementConfig';
 import { computePlayerTitle } from '@/config/directorConfig';
+import { GridSyncSystem } from '@/systems/GridSyncSystem';
 import { EventBus } from './EventBus';
 
 const LEGACY_STORAGE_KEY = 'neon-pulse-save-v1';
@@ -81,9 +82,15 @@ function defaultSave(): SaveData {
       cores: ['cyan'],
       trails: ['default'],
       themes: ['default'],
+      hudSkins: ['default'],
+      musicPacks: ['synthwave'],
+      personalities: ['observer'],
       selectedCore: 'cyan',
       selectedTrail: 'default',
       selectedTheme: 'default',
+      selectedHudSkin: 'default',
+      selectedMusicPack: 'synthwave',
+      selectedPersonality: 'observer',
     },
     daily: {
       lastPlayedDate: today,
@@ -132,6 +139,13 @@ function migrateSave(parsed: Partial<SaveData>): SaveData {
   if (merged.worldMemory.practiceCalloutSeen === undefined) merged.worldMemory.practiceCalloutSeen = false;
   if (!merged.worldMemory.seenPickups) merged.worldMemory.seenPickups = [];
   if (merged.settings.gridLoreEnabled === undefined) merged.settings.gridLoreEnabled = false;
+  merged.unlocks = { ...base.unlocks, ...parsed.unlocks };
+  if (!merged.unlocks.hudSkins) merged.unlocks.hudSkins = ['default'];
+  if (!merged.unlocks.musicPacks) merged.unlocks.musicPacks = ['synthwave'];
+  if (!merged.unlocks.personalities) merged.unlocks.personalities = ['observer'];
+  if (!merged.unlocks.selectedHudSkin) merged.unlocks.selectedHudSkin = 'default';
+  if (!merged.unlocks.selectedMusicPack) merged.unlocks.selectedMusicPack = 'synthwave';
+  if (!merged.unlocks.selectedPersonality) merged.unlocks.selectedPersonality = 'observer';
   merged.worldMemory.playerTitle = computePlayerTitle(merged.worldMemory, merged.stats);
   return merged;
 }
@@ -221,6 +235,7 @@ export class SaveManager {
           unlocked.push(unlock.name);
         }
       }
+      this.unlockEngagementByLevel(this.data.profile.syncLevel, unlocked);
     }
     this.persist();
     return unlocked;
@@ -327,17 +342,48 @@ export class SaveManager {
     }
   }
 
-  hasUnlock(type: 'core' | 'trail' | 'theme', id: string): boolean {
-    if (id === 'default') return true;
-    const key = type === 'core' ? 'cores' : type === 'trail' ? 'trails' : 'themes';
+  private unlockEngagementByLevel(level: number, unlocked: string[]): void {
+    for (const s of HUD_SKINS) {
+      if (s.unlockLevel && level >= s.unlockLevel && !this.data.unlocks.hudSkins.includes(s.id)) {
+        this.data.unlocks.hudSkins.push(s.id);
+        unlocked.push(s.name);
+      }
+    }
+    for (const p of MUSIC_PACKS) {
+      if (p.unlockLevel && level >= p.unlockLevel && !this.data.unlocks.musicPacks.includes(p.id)) {
+        this.data.unlocks.musicPacks.push(p.id);
+        unlocked.push(p.name);
+      }
+    }
+    for (const p of AI_PERSONALITIES) {
+      if (p.unlockLevel && level >= p.unlockLevel && !this.data.unlocks.personalities.includes(p.id)) {
+        this.data.unlocks.personalities.push(p.id);
+        unlocked.push(p.name);
+      }
+    }
+  }
+
+  hasUnlock(type: 'core' | 'trail' | 'theme' | 'hud' | 'music' | 'personality', id: string): boolean {
+    if (id === 'default' || id === 'synthwave' || id === 'observer') return true;
+    const key = type === 'core' ? 'cores'
+      : type === 'trail' ? 'trails'
+      : type === 'theme' ? 'themes'
+      : type === 'hud' ? 'hudSkins'
+      : type === 'music' ? 'musicPacks'
+      : 'personalities';
     return this.data.unlocks[key].includes(id);
   }
 
-  setCosmetic(type: 'core' | 'trail' | 'theme', id: string): boolean {
+  setCosmetic(type: 'core' | 'trail' | 'theme' | 'hud' | 'music' | 'personality', id: string): boolean {
     if (!this.hasUnlock(type, id)) return false;
-    if (type === 'core') this.data.unlocks.selectedCore = id;
-    else if (type === 'trail') this.data.unlocks.selectedTrail = id;
-    else this.data.unlocks.selectedTheme = id;
+    switch (type) {
+      case 'core': this.data.unlocks.selectedCore = id; break;
+      case 'trail': this.data.unlocks.selectedTrail = id; break;
+      case 'theme': this.data.unlocks.selectedTheme = id; break;
+      case 'hud': this.data.unlocks.selectedHudSkin = id; break;
+      case 'music': this.data.unlocks.selectedMusicPack = id; break;
+      case 'personality': this.data.unlocks.selectedPersonality = id; break;
+    }
     this.persist();
     return true;
   }

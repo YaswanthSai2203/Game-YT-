@@ -2,8 +2,13 @@ import type { GameMode, GameSettings, RunStats } from '@/types';
 import { getColorBlindPalette } from '@/config/designTokens';
 import { MODE_CONFIG, SYNC, GAME, UPGRADES, WEEKLY } from '@/config/constants';
 import { CORE_DEFS, TRAIL_DEFS, THEME_DEFS } from '@/config/cosmeticsConfig';
-import { analyzePlaystyle } from '@/utils/playstyleAnalysis';
+import {
+  HUD_SKINS, MUSIC_PACKS, AI_PERSONALITIES, getActiveSeason, getHudSkin,
+} from '@/config/engagementConfig';
+import { CommunityMilestoneService, type MilestoneStatus } from '@/core/CommunityMilestoneService';
+import type { GhostFrame } from '@/types';
 import { GRID_SYNC, GRID_SYNC_COMPLETE_COPY } from '@/config/sentientConfig';
+import { analyzePlaystyle } from '@/utils/playstyleAnalysis';
 import { RUN_THEME_LORE, getLoreWhisperSuffix, type RunThemeId, type GridMood } from '@/config/directorConfig';
 import { LEADERBOARD } from '@/config/leaderboardConfig';
 import { formatScore, formatTime } from '@/utils/math';
@@ -15,7 +20,7 @@ import { EventBus } from '@/core/EventBus';
 import { AudioManager } from '@/core/AudioManager';
 import type { UpgradeId } from '@/types';
 
-type ScreenId = 'loading' | 'splash' | 'menu' | 'hud' | 'pause' | 'gameover' | 'settings' | 'achievements' | 'leaderboard' | 'daily' | 'weekly' | 'loadout' | 'profile' | 'upgrades' | 'help' | 'toast';
+type ScreenId = 'loading' | 'splash' | 'menu' | 'hud' | 'pause' | 'gameover' | 'settings' | 'achievements' | 'leaderboard' | 'daily' | 'weekly' | 'loadout' | 'profile' | 'replay' | 'upgrades' | 'help' | 'toast';
 
 export class UIManager {
   private root: HTMLElement;
@@ -26,6 +31,8 @@ export class UIManager {
   private upgrades: UpgradeManager;
   private audio: AudioManager;
   private globalLb: GlobalLeaderboardService;
+  private milestoneSvc = new CommunityMilestoneService();
+  private milestoneStatus: MilestoneStatus | null = null;
   private callbacks: {
     onStartGame?: (mode: GameMode) => void;
     onResume?: () => void;
@@ -134,6 +141,7 @@ export class UIManager {
       case 'weekly': this.renderWeekly(); break;
       case 'loadout': this.renderLoadout(); break;
       case 'profile': this.renderProfile(); break;
+      case 'replay': this.renderReplayViewer(); break;
       case 'upgrades': this.renderUpgrades(); break;
       case 'help': this.renderHelp(); break;
     }
@@ -637,10 +645,21 @@ export class UIManager {
         ? 'QUANTUM RUN // THE GRID IS WATCHING'
         : GAME.SUBTITLE;
 
-    this.overlay.className = `screen screen-menu menu-stage-${stage}${syncComplete ? ' menu-sync-complete' : ''}`;
+    const season = getActiveSeason();
+
+    this.overlay.className = `screen screen-menu menu-stage-${stage}${syncComplete ? ' menu-sync-complete' : ''} ${season.menuClass}`;
     this.overlay.innerHTML = `
       ${gridSync >= GRID_SYNC.THRESHOLDS.GLITCHES ? '<div class="menu-cracks"></div>' : ''}
       ${gridSync >= GRID_SYNC.THRESHOLDS.WATCHER && !save.worldMemory.watcherDefeated ? '<div class="menu-watcher" aria-hidden="true"></div>' : ''}
+      <div class="season-banner animate-in">
+        <span class="season-label">🌍 ${season.name}</span>
+        <span class="season-sub">${season.subtitle}</span>
+      </div>
+      <div id="community-milestone" class="community-milestone animate-in">
+        <div class="milestone-label">Community Shard Sync</div>
+        <div class="milestone-bar"><div id="milestone-fill" class="milestone-fill" style="width:0%"></div></div>
+        <div id="milestone-text" class="milestone-text">Loading global progress…</div>
+      </div>
       <div class="menu-content animate-in ${corruptClass}">
         <header class="menu-header">
           <h1 class="menu-title">${title}</h1>
@@ -672,6 +691,7 @@ export class UIManager {
           <button type="button" class="btn btn-secondary menu-nav-btn${canAffordUpgrade ? ' menu-nav-ready' : ''}" data-action="upgrades" aria-label="Upgrades — spend Data Credits" title="Spend Data Credits earned from runs">⚡ Upgrades <span class="credits-badge">${save.dataCredits}◈</span></button>
           <button type="button" class="btn btn-secondary menu-nav-btn" data-action="loadout" aria-label="Loadout — cores, trails, themes" title="Customize your pilot">🎨 Loadout</button>
           <button type="button" class="btn btn-secondary menu-nav-btn" data-action="profile" aria-label="Pilot profile and stats" title="Lifetime stats and playstyle">👤 Profile</button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="replay" aria-label="Ghost replay viewer" title="Watch your saved echo run">👻 Echo Replay</button>
           <button type="button" class="btn btn-secondary menu-nav-btn${dailyReady ? ' menu-nav-ready' : ''}" data-action="daily" aria-label="Daily Challenge${dailyReady ? ' — bonus ready' : ''}" title="${dailyReady ? 'Daily bonus ready to claim' : 'Daily challenge and streak bonus'}">📅 Daily${dailyReady ? '<span class="nav-badge" aria-hidden="true">!</span>' : ''}</button>
           <button type="button" class="btn btn-secondary menu-nav-btn" data-action="weekly" aria-label="Weekly challenge" title="Community seeded weekly run">🌐 Weekly</button>
           <button type="button" class="btn btn-secondary menu-nav-btn" data-action="achievements" aria-label="Achievements" title="Track milestones and secrets">🏆 Achievements</button>
@@ -693,6 +713,22 @@ export class UIManager {
 
     this.bindMenuEvents();
     this.showMenuHints(dailyReady, canAffordUpgrade);
+    void this.refreshCommunityMilestone();
+  }
+
+  private async refreshCommunityMilestone(): Promise<void> {
+    this.milestoneStatus = await this.milestoneSvc.fetchStatus();
+    const fill = this.overlay.querySelector('#milestone-fill') as HTMLElement | null;
+    const text = this.overlay.querySelector('#milestone-text') as HTMLElement | null;
+    if (!fill || !text || !this.milestoneStatus) return;
+    fill.style.width = `${this.milestoneStatus.percent}%`;
+    text.textContent = this.milestoneStatus.available
+      ? `${formatScore(this.milestoneStatus.total)} / ${formatScore(this.milestoneStatus.goal)} shards synced globally`
+      : 'Connect Redis on Vercel for live community progress';
+  }
+
+  contributeToMilestone(shards: number): void {
+    void this.milestoneSvc.contribute(shards);
   }
 
   /** Gentle one-time tips — clear without spoiling Grid mysteries. */
@@ -740,6 +776,7 @@ export class UIManager {
         else if (action === 'weekly') this.showScreen('weekly');
         else if (action === 'loadout') this.showScreen('loadout');
         else if (action === 'profile') this.showScreen('profile');
+        else if (action === 'replay') this.showScreen('replay');
         else if (action === 'upgrades') this.showScreen('upgrades');
         else if (action === 'help') this.showScreen('help');
         else if (action === 'void') {
@@ -752,7 +789,8 @@ export class UIManager {
   }
 
   private renderHUD(): void {
-    this.overlay.className = 'screen screen-hud';
+    const skin = getHudSkin(this.save.save.unlocks.selectedHudSkin ?? 'default');
+    this.overlay.className = `screen screen-hud ${skin.cssClass}`;
     this.overlay.innerHTML = `
       <div id="hype-vignette" class="hype-vignette"></div>
       <div id="reality-glitch" class="reality-glitch"></div>
@@ -1256,12 +1294,13 @@ export class UIManager {
 
   private renderLoadout(): void {
     const u = this.save.save.unlocks;
+    type CosType = 'core' | 'trail' | 'theme' | 'hud' | 'music' | 'personality';
     const renderOptions = (
-      type: 'core' | 'trail' | 'theme',
+      type: CosType,
       defs: { id: string; name: string }[],
       selected: string,
     ) => defs.map((d) => {
-      const owned = this.save.hasUnlock(type, d.id) || d.id === 'default';
+      const owned = this.save.hasUnlock(type, d.id) || d.id === 'default' || d.id === 'synthwave' || d.id === 'observer';
       const active = selected === d.id;
       return `
         <button type="button" class="loadout-item${active ? ' loadout-active' : ''}${!owned ? ' loadout-locked' : ''}"
@@ -1276,29 +1315,24 @@ export class UIManager {
     this.overlay.innerHTML = `
       <div class="modal panel animate-in loadout-panel">
         <h2 class="modal-title">PILOT LOADOUT</h2>
-        <p class="loadout-sub">Customize your core, trail, and world theme</p>
-        <section class="loadout-section">
-          <h3>Core</h3>
-          <div class="loadout-grid">${renderOptions('core', CORE_DEFS, u.selectedCore)}</div>
-        </section>
-        <section class="loadout-section">
-          <h3>Trail</h3>
-          <div class="loadout-grid">${renderOptions('trail', TRAIL_DEFS, u.selectedTrail)}</div>
-        </section>
-        <section class="loadout-section">
-          <h3>World Theme</h3>
-          <div class="loadout-grid">${renderOptions('theme', THEME_DEFS, u.selectedTheme)}</div>
-        </section>
+        <p class="loadout-sub">Cores, trails, themes, HUD, music, and AI personality</p>
+        <section class="loadout-section"><h3>Core</h3><div class="loadout-grid">${renderOptions('core', CORE_DEFS, u.selectedCore)}</div></section>
+        <section class="loadout-section"><h3>Trail</h3><div class="loadout-grid">${renderOptions('trail', TRAIL_DEFS, u.selectedTrail)}</div></section>
+        <section class="loadout-section"><h3>World Theme</h3><div class="loadout-grid">${renderOptions('theme', THEME_DEFS, u.selectedTheme)}</div></section>
+        <section class="loadout-section"><h3>HUD Skin</h3><div class="loadout-grid">${renderOptions('hud', HUD_SKINS, u.selectedHudSkin)}</div></section>
+        <section class="loadout-section"><h3>Music Pack</h3><div class="loadout-grid">${renderOptions('music', MUSIC_PACKS, u.selectedMusicPack)}</div></section>
+        <section class="loadout-section"><h3>AI Personality</h3><div class="loadout-grid">${renderOptions('personality', AI_PERSONALITIES, u.selectedPersonality)}</div></section>
         <button type="button" class="btn btn-primary" data-action="back">← BACK</button>
       </div>
     `;
 
     this.overlay.querySelectorAll('[data-cosmetic]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const type = (btn as HTMLElement).dataset.cosmetic as 'core' | 'trail' | 'theme';
+        const type = (btn as HTMLElement).dataset.cosmetic as CosType;
         const id = (btn as HTMLElement).dataset.id!;
         if (this.save.setCosmetic(type, id)) {
           this.audio.playMenuConfirm();
+          if (type === 'music') this.audio.setMusicPack(id);
           this.showToast(`${type} equipped`, 'milestone');
           this.renderLoadout();
         }
@@ -1308,6 +1342,117 @@ export class UIManager {
       this.audio.playMenuConfirm();
       this.showScreen('menu');
     });
+  }
+
+  private renderReplayViewer(): void {
+    const replay = this.save.save.worldMemory.ghostReplay;
+    this.overlay.className = 'screen screen-replay modal-overlay';
+    if (!replay || replay.frames.length < 2) {
+      this.overlay.innerHTML = `
+        <div class="modal panel animate-in replay-viewer">
+          <h2 class="modal-title">GHOST REPLAY</h2>
+          <p class="replay-sub">No replay saved yet. Finish a strong run to record your lane path.</p>
+          <button type="button" class="btn btn-primary" data-action="back">← BACK</button>
+        </div>`;
+      this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
+        this.audio.playMenuConfirm();
+        this.showScreen('menu');
+      });
+      return;
+    }
+
+    const duration = replay.duration || replay.frames[replay.frames.length - 1].t;
+    const frames = replay.frames;
+    this.overlay.innerHTML = `
+      <div class="modal panel animate-in replay-viewer">
+        <h2 class="modal-title">GHOST REPLAY</h2>
+        <p class="replay-sub">Lane path from your saved echo — share or study your line.</p>
+        <div class="replay-stats">
+          Mode: ${replay.mode} · Duration: ${formatTime(duration)} · Score: ${formatScore(replay.score)} · ${frames.length} samples
+        </div>
+        <div class="replay-canvas-wrap"><canvas id="replay-canvas" width="400" height="220"></canvas></div>
+        <div class="replay-actions">
+          <button type="button" class="btn btn-primary" id="btn-replay-share">Share</button>
+          <button type="button" class="btn btn-secondary" id="btn-replay-copy">Copy JSON</button>
+          <button type="button" class="btn btn-secondary" data-action="back">← BACK</button>
+        </div>
+      </div>`;
+
+    const canvas = this.overlay.querySelector('#replay-canvas') as HTMLCanvasElement;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      this.drawReplayChart(ctx, canvas.width, canvas.height, frames, duration);
+    }
+
+    const payload = JSON.stringify({ v: 1, replay, exportedAt: Date.now() });
+    this.overlay.querySelector('#btn-replay-share')?.addEventListener('click', async () => {
+      const text = `Neon Pulse ghost replay — ${formatTime(duration)}, score ${formatScore(replay.score)}`;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: 'Neon Pulse Replay', text, url: window.location.href });
+        } catch {
+          /* cancelled */
+        }
+      } else {
+        await navigator.clipboard.writeText(text);
+        this.showToast('Replay summary copied', 'info');
+      }
+    });
+    this.overlay.querySelector('#btn-replay-copy')?.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(payload);
+      this.showToast('Replay JSON copied', 'milestone');
+    });
+    this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
+      this.audio.playMenuConfirm();
+      this.showScreen('menu');
+    });
+  }
+
+  private drawReplayChart(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    frames: GhostFrame[],
+    duration: number,
+  ): void {
+    const pad = 20;
+    const laneCount = 4;
+    ctx.fillStyle = '#0a0a12';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.font = '10px Rajdhani, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    for (let lane = 0; lane < laneCount; lane++) {
+      const y = pad + (lane / (laneCount - 1)) * (h - pad * 2);
+      ctx.beginPath();
+      ctx.moveTo(pad, y);
+      ctx.lineTo(w - pad, y);
+      ctx.stroke();
+      ctx.fillText(`L${lane}`, 4, y + 3);
+    }
+    const maxT = Math.max(duration, 0.1);
+    ctx.beginPath();
+    for (let i = 0; i < frames.length; i++) {
+      const f = frames[i];
+      const px = pad + (f.t / maxT) * (w - pad * 2);
+      const py = pad + (f.lane / (laneCount - 1)) * (h - pad * 2);
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.strokeStyle = '#00f0ff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    const last = frames[frames.length - 1];
+    ctx.fillStyle = '#a78bfa';
+    ctx.beginPath();
+    ctx.arc(
+      pad + (last.t / maxT) * (w - pad * 2),
+      pad + (last.lane / (laneCount - 1)) * (h - pad * 2),
+      5,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
   }
 
   private renderProfile(): void {
@@ -1330,11 +1475,16 @@ export class UIManager {
           <h3>Playstyle Analysis</h3>
           <p><strong>Lane bias:</strong> ${ps.laneBiasLabel}</p>
           <p><strong>Risk profile:</strong> ${ps.riskLabel}</p>
-          <p class="profile-tags">${ps.specialties.map((s) => `<span class="profile-tag">${s}</span>`).join('')}</p>
+          <p class="profile-tags">${ps.specialties.map((s: string) => `<span class="profile-tag">${s}</span>`).join('')}</p>
         </div>
+        <button type="button" class="btn btn-secondary" data-action="replay">👻 Echo Replay</button>
         <button type="button" class="btn btn-primary" data-action="back">← BACK</button>
       </div>
     `;
+    this.overlay.querySelector('[data-action="replay"]')?.addEventListener('click', () => {
+      this.audio.playMenuConfirm();
+      this.showScreen('replay');
+    });
     this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
       this.audio.playMenuConfirm();
       this.showScreen('menu');
@@ -2039,6 +2189,68 @@ export class UIManager {
         .menu-nav-btn, .btn, .mode-card { min-height: 48px; }
         .hud-pause { min-width: 48px; min-height: 48px; }
       }
+
+      .season-banner {
+        margin: 0 16px 12px; padding: 10px 14px; border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.35);
+        text-align: center; z-index: 2; position: relative;
+      }
+      .season-label {
+        display: block; font-family: 'Orbitron', sans-serif; font-size: 0.72rem;
+        letter-spacing: 0.12em; font-weight: 700;
+      }
+      .season-sub { display: block; font-size: 0.75rem; color: var(--color-textSecondary); margin-top: 4px; }
+      .season-frost .season-label { color: #67e8f9; }
+      .season-ember .season-label { color: #f97316; }
+      .season-bloom .season-label { color: #4ade80; }
+      .season-storm .season-label { color: #94a3b8; }
+      .season-echo .season-label { color: #a78bfa; }
+      .season-quantum .season-label { color: #22d3ee; }
+      .season-vault .season-label { color: #ffd700; }
+      .season-null .season-label { color: #e2e8f0; }
+      .season-chrono .season-label { color: #818cf8; }
+      .season-neural .season-label { color: #f472b6; }
+      .season-cyber .season-label { color: #00f0ff; }
+      .season-sync .season-label { color: #00ff88; }
+
+      .community-milestone {
+        margin: 0 16px 14px; padding: 10px 12px; border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.25);
+        z-index: 2; position: relative;
+      }
+      .community-milestone .milestone-label {
+        font-size: 0.65rem; color: var(--color-textSecondary); letter-spacing: 0.08em; margin-bottom: 6px;
+      }
+      .milestone-bar {
+        height: 6px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden;
+      }
+      .milestone-fill {
+        height: 100%; background: linear-gradient(90deg, var(--color-neonCyan), var(--color-neonViolet));
+        border-radius: 3px; transition: width 0.4s ease;
+      }
+      .milestone-text { font-size: 0.68rem; color: var(--color-textSecondary); margin-top: 6px; }
+
+      .hud-skin-minimal .hud-label, .hud-skin-minimal .hud-label-sm { opacity: 0.55; }
+      .hud-skin-minimal .hud-score { font-size: 1.1rem; }
+      .hud-skin-arcade .hud-score {
+        color: var(--color-neonCyan);
+        text-shadow: 0 0 10px var(--color-neonCyan), 0 0 20px rgba(0,240,255,0.4);
+      }
+      .hud-skin-arcade .hud-combo { color: var(--color-neonGold); }
+      .hud-skin-ghost .hud-score, .hud-skin-ghost .hud-time { color: #c4b5fd; }
+      .hud-skin-ghost .combo-ring-fill { stroke: #a78bfa; }
+      .hud-skin-titan .hud-score { font-size: 1.6rem; font-weight: 900; }
+      .hud-skin-titan .hud-time { font-size: 1.1rem; }
+
+      .replay-viewer { max-width: 440px; }
+      .replay-sub { text-align: center; color: var(--color-textSecondary); font-size: 0.85rem; margin-bottom: 12px; }
+      .replay-stats { font-size: 0.78rem; color: var(--color-textSecondary); line-height: 1.5; margin-bottom: 10px; text-align: center; }
+      .replay-canvas-wrap {
+        background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 10px; padding: 8px; margin-bottom: 12px;
+      }
+      .replay-canvas-wrap canvas { width: 100%; height: auto; display: block; border-radius: 6px; }
+      .replay-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 
       @media (min-width: 768px) {
         .mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }

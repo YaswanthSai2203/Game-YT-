@@ -1,4 +1,5 @@
 import { AI_COMMENTS, ADAPTIVE_PROTOCOL, GRID_SYNC } from '@/config/sentientConfig';
+import { PERSONALITY_LINES, getPersonality, type PersonalityId } from '@/config/engagementConfig';
 import { SaveManager } from '@/core/SaveManager';
 import { EventBus } from '@/core/EventBus';
 
@@ -63,7 +64,7 @@ export class SentientAISystem {
     }
 
     if (runs >= 10 && whispersEnabled && Math.random() < 0.25) {
-      this.speak(this.pick(AI_COMMENTS.early), 'whisper');
+      this.speak(this.pickPersonality('early'), this.getPersonalityTone());
     }
   }
 
@@ -80,7 +81,7 @@ export class SentientAISystem {
     let spoke = false;
 
     if (combo >= 12 && Math.random() < 0.12) {
-      this.speak(this.pick(AI_COMMENTS.combo), 'warm');
+      this.speak(this.pickPersonality('combo'), this.getPersonalityTone());
       spoke = true;
     } else if (this.isLeftHeavy() && timeAlive > 20 && Math.random() < 0.08) {
       this.speak(this.pick(AI_COMMENTS.leftHabit), 'cold');
@@ -92,13 +93,13 @@ export class SentientAISystem {
       this.speak(this.pick(AI_COMMENTS.predictable), 'cold');
       spoke = true;
     } else if (mem.behaviorAdapted && Math.random() < 0.06) {
-      this.speak(this.pick(AI_COMMENTS.adapting), 'warm');
+      this.speak(this.pickPersonality('combo'), 'warm');
       spoke = true;
     } else if (runs >= 50 && Math.random() < 0.04) {
-      this.speak(this.pick(AI_COMMENTS.veteran), 'whisper');
+      this.speak(this.pickPersonality('veteran'), this.getPersonalityTone());
       spoke = true;
     } else if (nearDeath && Math.random() < 0.15) {
-      this.speak('The grid remembers every failure.', 'whisper');
+      this.speak(this.pickPersonality('struggle'), 'whisper');
       spoke = true;
     }
 
@@ -195,6 +196,23 @@ export class SentientAISystem {
     mem.aiTrust = Math.min(100, mem.aiTrust + 1);
     this.save.persist();
     this.events.emit('ai:speak', { text, tone });
+  }
+
+  private getPersonalityId(): PersonalityId {
+    const id = this.save.save.unlocks.selectedPersonality ?? 'observer';
+    return (['observer', 'architect', 'mystic', 'rival'].includes(id) ? id : 'observer') as PersonalityId;
+  }
+
+  private getPersonalityTone(): 'whisper' | 'cold' | 'warm' | 'glitch' {
+    return getPersonality(this.getPersonalityId()).tone;
+  }
+
+  private pickPersonality(category: string): string {
+    const pid = this.getPersonalityId();
+    const pool = PERSONALITY_LINES[pid]?.[category]
+      ?? PERSONALITY_LINES.observer[category]
+      ?? AI_COMMENTS.early;
+    return this.pick(pool as readonly string[]);
   }
 
   private pick(arr: readonly string[]): string {

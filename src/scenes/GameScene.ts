@@ -23,6 +23,10 @@ import {
 import { LivingBackgroundSystem } from '@/systems/LivingBackgroundSystem';
 import { RUN_EVOLUTION, pickBiomeFromSeed } from '@/config/backgroundConfig';
 import { getThemeBiome, getTrailStyle } from '@/config/cosmeticsConfig';
+import { PostProcessSystem } from '@/systems/PostProcessSystem';
+import { HitStopSystem } from '@/systems/HitStopSystem';
+import { getActiveSeason } from '@/config/engagementConfig';
+import type { BackgroundBiomeId } from '@/config/backgroundConfig';
 import { QuantumRealitySystem } from '@/systems/QuantumRealitySystem';
 import { SentientAISystem } from '@/systems/SentientAISystem';
 import { MythEventSystem } from '@/systems/MythEventSystem';
@@ -114,7 +118,10 @@ export class GameScene extends BaseScene {
   private currentAudioLayer: 'heartbeat' | 'choir' | 'piano' | 'none' = 'none';
   private firstMoveLogged = false;
   private lastRunFirstMove: number | null = null;
+  private postProcess: PostProcessSystem | null = null;
+  private hitStop = new HitStopSystem();
   private mercyPulseTimer = 0;
+  private seasonalShardMult = 1;
   private quantumCorePhase = 0;
 
   private unsubscribers: (() => void)[] = [];
@@ -243,8 +250,11 @@ export class GameScene extends BaseScene {
     this.audio.setGridMood(this.runPlan.mood);
 
     const bgSeed = this.config.seed ?? this.runPlan.theme.length * 9973 + this.save.save.stats.totalRuns;
+    const season = getActiveSeason();
+    this.seasonalShardMult = season.shardMult ?? 1;
     const cosmeticBiome = getThemeBiome(this.save.save.unlocks.selectedTheme);
-    const startBiome = cosmeticBiome ?? pickBiomeFromSeed(bgSeed, this.runPlan.theme);
+    const seasonBiome = season.biomeBias as BackgroundBiomeId | undefined;
+    const startBiome = cosmeticBiome ?? seasonBiome ?? pickBiomeFromSeed(bgSeed, this.runPlan.theme);
     this.livingBg = new LivingBackgroundSystem(this.container, this.gameWidth, this.gameHeight, {
       biome: startBiome,
       totalRuns: this.save.save.stats.totalRuns,
@@ -264,6 +274,11 @@ export class GameScene extends BaseScene {
       this.save.settings.reducedMotion,
     );
     this.particles.setTrailStyle(getTrailStyle(this.save.save.unlocks.selectedTrail));
+
+    this.postProcess?.destroy();
+    this.postProcess = new PostProcessSystem(this.container, this.save.settings.reducedMotion);
+    this.hitStop.reset();
+    this.audio.refreshMusicPackFromSave();
     this.floatingText = new FloatingTextSystem(this.container);
 
     const seed = this.config.seed
@@ -408,7 +423,8 @@ export class GameScene extends BaseScene {
 
     const timeScale = this.activePowerups.some((p) => p.type === 'chronos')
       ? POWERUP.CHRONOS_FACTOR : 1;
-    const scaledDt = dt * timeScale * this.slowMoScale;
+    const hitScale = this.hitStop.consume(dt);
+    const scaledDt = dt * timeScale * this.slowMoScale * hitScale;
 
     this.timeAlive += dt;
     this.distance += this.spawner.getScrollSpeed() * scaledDt * 0.01;
@@ -463,6 +479,12 @@ export class GameScene extends BaseScene {
     this.checkMilestones();
     this.checkSpeedTiers();
     this.updateLivingBackground(scaledDt);
+    this.postProcess?.update({
+      speedRatio: this.spawner.getSpeedRatio(),
+      combo: this.combo.getCombo(),
+      fractureActive: !!this.reality.getActiveDimension(),
+      nearDeath: this.isNearDeath(),
+    });
     this.applyDynamicCamera();
     this.applyScreenShake();
     this.applyRealityGlitch();
@@ -575,6 +597,8 @@ export class GameScene extends BaseScene {
     this.livingBg?.setTheme(theme);
     this.livingBg?.setFractureActive(true, 0.85);
     this.watcher?.setFractureHidden(true);
+    this.postProcess?.pulseFracture();
+    this.hitStop.trigger(100, 0.95);
     this.events.emit('ui:chromatic', { intensity: 0.7, duration: 350 });
     if (this.save.settings.reducedMotion) return;
     this.shakeAmount = Math.max(this.shakeAmount, 10);
@@ -620,7 +644,7 @@ export class GameScene extends BaseScene {
   }
 
   private getShardValueMult(): number {
-    return this.reality.getModifiers().shardValueMult;
+    return this.reality.getModifiers().shardValueMult * this.seasonalShardMult;
   }
 
   private updatePlayer(dt: number): void {
@@ -990,11 +1014,13 @@ export class GameScene extends BaseScene {
       this.audio.playVaultJackpot();
       this.shakeAmount = Math.max(this.shakeAmount, 16);
       this.livingBg?.triggerVaultZoom();
+      this.hitStop.trigger(60, 0.7);
     } else if (isVault) {
       this.events.emit('ui:hype', { title: 'VAULT JACKPOT!', subtitle: `+${points.toLocaleString()}`, tier: 5, color: 'gold' });
       this.audio.playVaultJackpot();
       this.shakeAmount = Math.max(this.shakeAmount, 14);
       this.livingBg?.triggerVaultZoom();
+      this.hitStop.trigger(60, 0.7);
       this.events.emit('ui:flash', { color: 'rgba(255,215,0,0.35)', duration: 250 });
       if (!this.save.settings.reducedMotion) {
         this.particles.burst(this.laneCenters[this.playerLane], this.playerY - 30, COLORS.gold, 40, 420);
@@ -1145,6 +1171,7 @@ export class GameScene extends BaseScene {
         mode: this.config.mode,
       });
       this.audio.playHit();
+      this.hitStop.trigger(120, 1);
       this.shakeAmount = 20;
       this.events.emit('ui:flash', { color: 'rgba(255,0,110,0.45)', duration: 350 });
       if (!this.save.settings.reducedMotion) {
