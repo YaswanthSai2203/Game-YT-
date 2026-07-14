@@ -16,10 +16,12 @@ import { ParticleSystem } from '@/systems/ParticleSystem';
 import { FloatingTextSystem } from '@/systems/FloatingTextSystem';
 import {
   createPlayerCore, createFirewall, createShard,
-  createPowerupIcon, createGridBackground, getCoreColor,
+  createPowerupIcon, getCoreColor,
   createBossFirewall, createGoldenShard, createGhostCore, createWhiteFirewall,
-  createScoreBoostPickup, createBombPickup, createWeatherOverlay,
+  createScoreBoostPickup, createBombPickup,
 } from '@/graphics/ProceduralAssets';
+import { LivingBackgroundSystem } from '@/systems/LivingBackgroundSystem';
+import { RUN_EVOLUTION } from '@/config/backgroundConfig';
 import { QuantumRealitySystem } from '@/systems/QuantumRealitySystem';
 import { SentientAISystem } from '@/systems/SentientAISystem';
 import { MythEventSystem } from '@/systems/MythEventSystem';
@@ -85,7 +87,9 @@ export class GameScene extends BaseScene {
   private paused = false;
   private countdownActive = false;
 
-  private gridBg!: Container;
+  private livingBg: LivingBackgroundSystem | null = null;
+  private cameraZoom = 1;
+  private cameraStretchY = 1;
   private shakeAmount = 0;
   private nearMissChecked = new Set<number>();
   private milestonesHit = new Set<number>();
@@ -94,13 +98,11 @@ export class GameScene extends BaseScene {
   private challengeComplete = false;
   private runCredits = 0;
   private scoreBoostTimer = 0;
-  private bgPulsePhase = 0;
   private sentient!: SentientAISystem;
   private gridSync!: GridSyncSystem;
   private director!: AIDirectorSystem;
   private ghostReplay!: GhostReplaySystem;
   private runPlan: RunPlan | null = null;
-  private weatherOverlay: Container | null = null;
   private slowMoScale = 1;
   private slowMoTimer = 0;
   private myth!: MythEventSystem;
@@ -149,6 +151,9 @@ export class GameScene extends BaseScene {
     this.container.removeChildren();
     this.container.x = 0;
     this.container.y = 0;
+    this.container.pivot.set(0, 0);
+    this.container.scale.set(1);
+    this.livingBg = null;
     this.gameOver = true;
   }
 
@@ -207,6 +212,7 @@ export class GameScene extends BaseScene {
       this.playerContainer.x = this.playerX;
       this.playerContainer.y = this.playerY;
     }
+    this.livingBg?.rebuild(this.gameWidth, this.gameHeight);
   }
 
   private resetGame(): void {
@@ -222,16 +228,20 @@ export class GameScene extends BaseScene {
       this.gameWidth * 0.8,
     ];
 
-    const theme = this.save.save.unlocks.selectedTheme;
-    this.gridBg = createGridBackground(this.gameWidth, this.gameHeight, theme);
-    this.container.addChild(this.gridBg);
-
     this.director = new AIDirectorSystem(this.events, this.save);
     this.runPlan = this.director.planRun(this.config.mode);
     this.director.emitRunStart(this.runPlan);
-    this.weatherOverlay = createWeatherOverlay(this.gameWidth, this.gameHeight, this.runPlan.weather);
-    this.gridBg.addChild(this.weatherOverlay);
     this.audio.setGridMood(this.runPlan.mood);
+
+    const theme = this.save.save.unlocks.selectedTheme;
+    const bgSeed = this.config.seed ?? this.runPlan.theme.length * 9973 + this.save.save.stats.totalRuns;
+    this.livingBg = new LivingBackgroundSystem(this.container, this.gameWidth, this.gameHeight, {
+      theme,
+      totalRuns: this.save.save.stats.totalRuns,
+      seed: bgSeed,
+      reducedMotion: this.save.settings.reducedMotion,
+      directorWeather: this.runPlan.weather,
+    });
 
     this.ghostReplay = new GhostReplaySystem();
     this.ghostReplay.startRecording(this.config.mode);
@@ -266,10 +276,13 @@ export class GameScene extends BaseScene {
     this.myth.setDirectorMultiplier(this.runPlan.mythRollMult);
     this.reality.setFractureBoost(this.runPlan.fractureBoost);
 
-    const showWatcher = this.save.save.worldMemory.gridSync >= GRID_SYNC.THRESHOLDS.WATCHER
-      && !this.save.save.worldMemory.watcherDefeated;
+    const totalRuns = this.save.save.stats.totalRuns;
+    const showWatcher = (
+      totalRuns >= RUN_EVOLUTION.WATCHER_HINT
+      || this.save.save.worldMemory.gridSync >= GRID_SYNC.THRESHOLDS.WATCHER
+    ) && !this.save.save.worldMemory.watcherDefeated;
     if (showWatcher) {
-      this.watcher = new LivingWatcher(this.container, this.gameWidth, this.gameHeight);
+      this.watcher = new LivingWatcher(this.container, this.gameWidth, this.gameHeight, bgSeed);
     } else {
       this.watcher = null;
     }
@@ -310,7 +323,8 @@ export class GameScene extends BaseScene {
     this.challengeComplete = false;
     this.runCredits = 0;
     this.scoreBoostTimer = 0;
-    this.bgPulsePhase = 0;
+    this.cameraZoom = 1;
+    this.cameraStretchY = 1;
     this.slowMoScale = 1;
     this.slowMoTimer = 0;
     this.ghostContainer = null;
@@ -429,7 +443,8 @@ export class GameScene extends BaseScene {
     this.checkNearMisses();
     this.checkMilestones();
     this.checkSpeedTiers();
-    this.updateGrid(scaledDt);
+    this.updateLivingBackground(scaledDt);
+    this.applyDynamicCamera();
     this.applyScreenShake();
     this.applyRealityGlitch();
     this.updatePlayerVisuals();
@@ -437,7 +452,8 @@ export class GameScene extends BaseScene {
     const intensity = this.spawner.getSpeedRatio();
     this.audio.setIntensity(intensity);
     this.watcher?.update(dt, this.playerX, this.playerY);
-    if (this.combo.getCombo() >= 10) this.watcher?.onCombo(this.combo.getCombo());
+    const combo = this.combo.getCombo();
+    if (combo >= 10) this.watcher?.onCombo(combo);
 
     if (this.timeAlive >= 120 && this.watcher && !this.save.save.worldMemory.watcherDefeated) {
       this.save.markWatcherDefeated();
@@ -537,21 +553,19 @@ export class GameScene extends BaseScene {
       this.gridSync.onDimensionEntered(dim.id);
       this.events.emit('grid:dimension', { id: dim.id });
     }
+    this.livingBg?.setTheme(theme, true);
+    this.livingBg?.setFractureActive(true, 0.85);
+    this.watcher?.setFractureHidden(true);
     if (this.save.settings.reducedMotion) return;
     this.shakeAmount = Math.max(this.shakeAmount, 10);
-    this.container.removeChild(this.gridBg);
-    this.gridBg.destroy({ children: true });
-    this.gridBg = createGridBackground(this.gameWidth, this.gameHeight, theme);
-    this.container.addChildAt(this.gridBg, 0);
     this.audio.playFracture();
   }
 
   private onRealityFractureEnd(): void {
     const theme = this.save.save.unlocks.selectedTheme;
-    this.container.removeChild(this.gridBg);
-    this.gridBg.destroy({ children: true });
-    this.gridBg = createGridBackground(this.gameWidth, this.gameHeight, theme);
-    this.container.addChildAt(this.gridBg, 0);
+    this.livingBg?.setTheme(theme, true);
+    this.livingBg?.setFractureActive(false);
+    this.watcher?.setFractureHidden(false);
     this.audio.setRealityPitch(1);
   }
 
@@ -939,10 +953,12 @@ export class GameScene extends BaseScene {
       });
       this.audio.playVaultJackpot();
       this.shakeAmount = Math.max(this.shakeAmount, 16);
+      this.livingBg?.triggerVaultZoom();
     } else if (isVault) {
       this.events.emit('ui:hype', { title: 'VAULT JACKPOT!', subtitle: `+${points.toLocaleString()}`, tier: 5, color: 'gold' });
       this.audio.playVaultJackpot();
       this.shakeAmount = Math.max(this.shakeAmount, 14);
+      this.livingBg?.triggerVaultZoom();
       this.events.emit('ui:flash', { color: 'rgba(255,215,0,0.35)', duration: 250 });
       if (!this.save.settings.reducedMotion) {
         this.particles.burst(this.laneCenters[this.playerLane], this.playerY - 30, COLORS.gold, 40, 420);
@@ -1135,39 +1151,54 @@ export class GameScene extends BaseScene {
     }, fromDeath ? 800 : 100);
   }
 
-  private updateGrid(dt: number): void {
-    const speed = this.spawner.getScrollSpeed();
-    this.bgPulsePhase += dt;
-
-    for (let i = 0; i < this.gridBg.children.length; i++) {
-      const layer = this.gridBg.children[i];
-      const label = layer.label ?? '';
-      if (label.startsWith('grid-layer-')) {
-        layer.y += speed * dt * (0.2 + i * 0.12);
-        if (layer.y > 40) layer.y -= 40;
-      } else if (label === 'stars') {
-        layer.y += speed * dt * 0.04;
-        if (layer.y > 60) layer.y -= 60;
-        layer.alpha = 0.7 + Math.sin(this.bgPulsePhase * 0.5) * 0.15;
-      } else if (label === 'lane-glow') {
-        layer.alpha = 0.85 + Math.sin(this.bgPulsePhase * 1.2) * 0.15;
-      } else if (label === 'weather') {
-        layer.y += speed * dt * 0.08;
-        if (layer.y > 30) layer.y -= 30;
-        layer.alpha = 0.75 + Math.sin(this.bgPulsePhase * 0.9) * 0.15;
-      }
+  private updateLivingBackground(dt: number): void {
+    if (!this.livingBg) return;
+    const fractureActive = !!this.reality.getActiveDimension();
+    const cam = this.livingBg.update({
+      dt,
+      scrollSpeed: this.spawner.getScrollSpeed(),
+      speedRatio: this.spawner.getSpeedRatio(),
+      combo: this.combo.getCombo(),
+      timeAlive: this.timeAlive,
+      nearDeath: this.isNearDeath(),
+      fractureActive,
+      fractureIntensity: fractureActive ? 0.7 : 0,
+      playerX: this.playerX,
+      playerY: this.playerY,
+      vaultNearby: false,
+      hasShield: this.hasShield,
+    });
+    this.cameraZoom = cam.zoom;
+    this.cameraStretchY = cam.stretchY;
+    if (this.isNearDeath() && !this.save.settings.reducedMotion) {
+      this.shakeAmount = Math.max(this.shakeAmount, 2.5);
     }
+  }
+
+  private applyDynamicCamera(): void {
+    if (this.save.settings.reducedMotion) {
+      this.container.pivot.set(0, 0);
+      this.container.scale.set(1);
+      this.container.x = 0;
+      this.container.y = 0;
+      return;
+    }
+    const bossVisible = this.spawner.getEntities().some((e) => e.isBoss && e.active);
+    let zoom = this.cameraZoom;
+    if (bossVisible) zoom += 0.015;
+    this.container.scale.set(zoom, zoom * this.cameraStretchY);
+    this.container.pivot.set(this.gameWidth / 2, this.gameHeight * 0.5);
+    this.container.x = this.gameWidth / 2;
+    this.container.y = this.gameHeight * 0.5;
   }
 
   private applyScreenShake(): void {
     if (this.shakeAmount > 0 && !this.save.settings.reducedMotion) {
-      this.container.x = (Math.random() - 0.5) * this.shakeAmount;
-      this.container.y = (Math.random() - 0.5) * this.shakeAmount;
+      this.container.x += (Math.random() - 0.5) * this.shakeAmount;
+      this.container.y += (Math.random() - 0.5) * this.shakeAmount;
       this.shakeAmount *= 0.9;
       if (this.shakeAmount < 0.5) {
         this.shakeAmount = 0;
-        this.container.x = 0;
-        this.container.y = 0;
       }
     }
   }
