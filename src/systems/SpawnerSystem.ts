@@ -1,6 +1,7 @@
 import type { PowerupType } from '@/types';
 import type { RealityModifiers } from '@/systems/QuantumRealitySystem';
 import { DIFFICULTY, POWERUP, PICKUP, SCROLL } from '@/config/constants';
+import { pickPattern, type PatternDef, type SpawnCmd } from '@/config/patternLibrary';
 import { createRng, randomInt, lerp, smoothstep } from '@/utils/math';
 
 export type SpawnEntityType = 'firewall' | 'shard' | 'powerup' | 'vault' | 'white_firewall' | 'score_boost' | 'bomb';
@@ -155,6 +156,64 @@ export class SpawnerSystem {
       return;
     }
 
+    const tag = this.directorMods?.patternStyle ?? 'balanced';
+    const pattern = pickPattern(this.elapsed, tag, this.rng);
+    if (pattern) {
+      this.executePattern(pattern);
+    } else {
+      this.spawnLegacyPattern();
+    }
+
+    this.maybeSpawnBonusPickup();
+  }
+
+  private executePattern(pattern: PatternDef): void {
+    const fwWeight = (this.modifiers?.firewallWeight ?? 1) * (this.directorMods?.firewallWeight ?? 1);
+    for (const step of pattern.steps) {
+      if (step.type === 'wait') continue;
+      if (step.type === 'firewall' && this.rng() > fwWeight) continue;
+      const lane = this.resolveLane(step);
+      if (lane === null) continue;
+      if (step.type === 'firewall' && this.isLaneBlocked(lane)) continue;
+      this.spawnEntity(step.type as SpawnEntityType, lane);
+    }
+  }
+
+  private resolveLane(cmd: SpawnCmd): number | null {
+    if (typeof cmd.lane === 'number') return cmd.lane;
+    if (cmd.lane === 'random') return randomInt(0, 2);
+    if (cmd.lane === 'gap') return randomInt(0, 2);
+    if (cmd.lane === 'all') return randomInt(0, 2);
+    return null;
+  }
+
+  private maybeSpawnBonusPickup(): void {
+    if (this.rng() < POWERUP.SPAWN_CHANCE) {
+      const lane = randomInt(0, 2);
+      if (!this.isLaneBlocked(lane)) {
+        this.spawnEntity('powerup', lane);
+      }
+    }
+
+    if (this.elapsed >= PICKUP.MIN_SPAWN_TIME) {
+      const lane = randomInt(0, 2);
+      if (!this.isLaneBlocked(lane)) {
+        const roll = this.rng();
+        if (roll < PICKUP.BONUS_SPAWN_CHANCE) {
+          this.spawnEntity('score_boost', lane);
+        } else if (roll < PICKUP.BONUS_SPAWN_CHANCE + PICKUP.TRAP_SPAWN_CHANCE) {
+          this.spawnEntity('bomb', lane);
+        }
+      }
+    }
+
+    const vaultChance = this.modifiers?.vaultChance ?? 0.005;
+    if (this.elapsed > 40 && this.rng() < vaultChance) {
+      this.spawnEntity('vault', randomInt(0, 2));
+    }
+  }
+
+  private spawnLegacyPattern(): void {
     const fwWeight = (this.modifiers?.firewallWeight ?? 1) * (this.directorMods?.firewallWeight ?? 1);
     const patternLevel = DIFFICULTY.PATTERN_UNLOCK_TIME.filter((t) => this.elapsed >= t).length;
     const style = this.directorMods?.patternStyle ?? 'balanced';
@@ -203,30 +262,6 @@ export class SpawnerSystem {
         break;
       default:
         this.spawnExpertPattern();
-    }
-
-    if (this.rng() < POWERUP.SPAWN_CHANCE) {
-      const lane = randomInt(0, 2);
-      if (!this.isLaneBlocked(lane)) {
-        this.spawnEntity('powerup', lane);
-      }
-    }
-
-    if (this.elapsed >= PICKUP.MIN_SPAWN_TIME) {
-      const lane = randomInt(0, 2);
-      if (!this.isLaneBlocked(lane)) {
-        const roll = this.rng();
-        if (roll < PICKUP.BONUS_SPAWN_CHANCE) {
-          this.spawnEntity('score_boost', lane);
-        } else if (roll < PICKUP.BONUS_SPAWN_CHANCE + PICKUP.TRAP_SPAWN_CHANCE) {
-          this.spawnEntity('bomb', lane);
-        }
-      }
-    }
-
-    const vaultChance = this.modifiers?.vaultChance ?? 0.005;
-    if (this.elapsed > 40 && this.rng() < vaultChance) {
-      this.spawnEntity('vault', randomInt(0, 2));
     }
   }
 

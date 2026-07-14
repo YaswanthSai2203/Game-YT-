@@ -212,6 +212,7 @@ export class Game {
     this.input.setEnabled(false);
     this.setCanvasVisible(false);
     const { newHighScore, xpGained, creditsEarned, syncUnlocks } = this.save.recordRun(stats);
+    if (stats.shards > 0) this.ui.contributeToMilestone(stats.shards);
     const mem = this.save.save.worldMemory;
 
     const showOver = (globalRank?: number, globalTotal?: number): void => {

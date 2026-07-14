@@ -111,9 +111,15 @@ export interface Unlocks {
   cores: string[];
   trails: string[];
   themes: string[];
+  hudSkins: string[];
+  musicPacks: string[];
+  personalities: string[];
   selectedCore: string;
   selectedTrail: string;
   selectedTheme: string;
+  selectedHudSkin: string;
+  selectedMusicPack: string;
+  selectedPersonality: string;
 }
 
 export interface DailyState {

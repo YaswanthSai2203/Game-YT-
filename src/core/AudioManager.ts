@@ -1,4 +1,5 @@
 import { SaveManager } from './SaveManager';
+import { getMusicPack, type MusicPackDef } from '@/config/engagementConfig';
 
 type OscillatorType = 'sine' | 'square' | 'sawtooth' | 'triangle';
 
@@ -17,6 +18,7 @@ export class AudioManager {
   private save: SaveManager;
   private intensity = 0;
   private gridMood = 'curious';
+  private musicPack: MusicPackDef = getMusicPack('synthwave');
 
   constructor(save: SaveManager) {
     this.save = save;
@@ -220,9 +222,21 @@ export class AudioManager {
     this.musicFilter.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.4);
   }
 
-  getGridMood(): string {
-    return this.gridMood;
+  setMusicPack(packId: string): void {
+    this.musicPack = getMusicPack(packId);
+    if (this.musicFilter) {
+      this.musicFilter.frequency.setTargetAtTime(this.musicPack.filterBase, this.ctx?.currentTime ?? 0, 0.3);
+    }
+    if (this.musicPlaying) {
+      this.stopMusic();
+      this.startMusic();
+    }
   }
+
+  refreshMusicPackFromSave(): void {
+    this.setMusicPack(this.save.save.unlocks.selectedMusicPack ?? 'synthwave');
+  }
+
 
   setIntensity(value: number): void {
     const prev = this.intensity;
@@ -237,21 +251,16 @@ export class AudioManager {
   }
 
   private getMusicTickMs(): number {
-    return Math.max(220, 480 - this.intensity * 160);
-  }
-
-  private restartMusicTicker(): void {
-    if (!this.musicPlaying) return;
-    if (this.musicInterval) clearInterval(this.musicInterval);
-    this.startMusicTicker();
+    return Math.max(180, this.musicPack.tickBaseMs - this.intensity * 160);
   }
 
   private startMusicTicker(): void {
-    const scale = [261, 294, 330, 349, 392, 440, 494, 523];
+    const scale = this.musicPack.scale;
+    const tickType = this.musicPack.tickType;
     this.musicInterval = setInterval(() => {
       if (!this.ctx || !this.musicGain) return;
       const freq = scale[this.musicStep % scale.length] * (1 + this.intensity * 0.35) * this.realityPitch;
-      this.playTone(freq, 0.18, 'sine', 0.035 + this.intensity * 0.02, 0, this.musicGain);
+      this.playTone(freq, 0.18, tickType, 0.035 + this.intensity * 0.02, 0, this.musicGain);
       this.musicStep++;
     }, this.getMusicTickMs());
   }
@@ -259,16 +268,16 @@ export class AudioManager {
   startMusic(): void {
     if (this.musicPlaying || !this.ctx || !this.musicGain) return;
     this.musicPlaying = true;
+    this.musicPack = getMusicPack(this.save.save.unlocks.selectedMusicPack ?? 'synthwave');
 
-    const pads = [
-      { freq: 55, gain: 0.012 },
-      { freq: 82.5, gain: 0.008 },
-      { freq: 110, gain: 0.006 },
-    ];
+    const pads = this.musicPack.padFreqs.map((freq, i) => ({
+      freq,
+      gain: this.musicPack.padGains[i] ?? 0.008,
+    }));
     for (const pad of pads) {
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
-      osc.type = 'sine';
+      osc.type = this.musicPack.tickType === 'square' ? 'square' : 'sine';
       osc.frequency.value = pad.freq;
       gain.gain.value = pad.gain;
       osc.connect(gain);
@@ -277,8 +286,22 @@ export class AudioManager {
       this.musicOscs.push(osc);
     }
 
+    if (this.musicFilter) {
+      this.musicFilter.frequency.value = this.musicPack.filterBase;
+    }
+
     this.musicStep = 0;
     this.startMusicTicker();
+  }
+
+  private restartMusicTicker(): void {
+    if (!this.musicPlaying) return;
+    if (this.musicInterval) clearInterval(this.musicInterval);
+    this.startMusicTicker();
+  }
+
+  getGridMood(): string {
+    return this.gridMood;
   }
 
   stopMusic(): void {
