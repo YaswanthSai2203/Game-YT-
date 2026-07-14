@@ -1,5 +1,5 @@
 import type { GameMode } from '@/types';
-import { LEADERBOARD, isGlobalLeaderboardEnabled } from '@/config/leaderboardConfig';
+import { LEADERBOARD, getLeaderboardApiBase, isGlobalLeaderboardEnabled } from '@/config/leaderboardConfig';
 
 export interface GlobalLeaderboardEntry {
   rank: number;
@@ -37,7 +37,7 @@ export class GlobalLeaderboardService {
     if (hit && Date.now() - hit.at < this.CACHE_MS) return hit.entries;
 
     try {
-      const url = `${LEADERBOARD.API_URL}/scores?mode=${encodeURIComponent(mode)}&limit=${limit}`;
+      const url = `${getLeaderboardApiBase()}/scores?mode=${encodeURIComponent(mode)}&limit=${limit}`;
       const res = await fetch(url, { headers: { Accept: 'application/json' } });
       if (!res.ok) return [];
       const data = (await res.json()) as { entries?: GlobalLeaderboardEntry[] };
@@ -58,7 +58,7 @@ export class GlobalLeaderboardService {
     }
 
     try {
-      const res = await fetch(`${LEADERBOARD.API_URL}/scores`, {
+      const res = await fetch(`${getLeaderboardApiBase()}/scores`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ mode, score, name: name.slice(0, 24) || 'Pilot' }),
