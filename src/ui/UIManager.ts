@@ -11,7 +11,7 @@ import { AudioManager } from '@/core/AudioManager';
 import type { UpgradeId } from '@/types';
 import { UPGRADES } from '@/config/constants';
 
-type ScreenId = 'loading' | 'splash' | 'menu' | 'hud' | 'pause' | 'gameover' | 'settings' | 'achievements' | 'leaderboard' | 'daily' | 'upgrades' | 'toast';
+type ScreenId = 'loading' | 'splash' | 'menu' | 'hud' | 'pause' | 'gameover' | 'settings' | 'achievements' | 'leaderboard' | 'daily' | 'upgrades' | 'help' | 'toast';
 
 export class UIManager {
   private root: HTMLElement;
@@ -124,6 +124,7 @@ export class UIManager {
       case 'leaderboard': this.renderLeaderboard(); break;
       case 'daily': this.renderDaily(); break;
       case 'upgrades': this.renderUpgrades(); break;
+      case 'help': this.renderHelp(); break;
     }
   }
 
@@ -589,6 +590,9 @@ export class UIManager {
     const xpNext = SYNC.XP_PER_LEVEL[save.profile.syncLevel] ?? 99999;
     const xpPrev = SYNC.XP_PER_LEVEL[save.profile.syncLevel - 1] ?? 0;
     const xpProgress = ((save.profile.syncXP - xpPrev) / (xpNext - xpPrev)) * 100;
+    const dailyReady = this.save.canClaimDailyBonus();
+    const upgradeIds = Object.keys(UPGRADES) as UpgradeId[];
+    const canAffordUpgrade = upgradeIds.some((id) => this.upgrades.canAfford(id));
 
     let title: string = GAME.TITLE;
     if (syncComplete) title = 'THE GRID';
@@ -632,14 +636,18 @@ export class UIManager {
           }).join('')}
         </div>
 
-        <nav class="menu-nav">
-          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="upgrades" aria-label="Upgrades">⚡ Upgrades <span class="credits-badge">${save.dataCredits}◈</span></button>
-          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="daily" aria-label="Daily Challenge">📅 Daily</button>
-          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="achievements" aria-label="Achievements">🏆 Achievements</button>
-          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="leaderboard" aria-label="Leaderboard">📊 Ranks</button>
-          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="settings" aria-label="Settings">⚙️ Settings</button>
+        <p class="menu-nav-label">Progress &amp; tools</p>
+        <nav class="menu-nav" aria-label="Progress and tools">
+          <button type="button" class="btn btn-secondary menu-nav-btn${canAffordUpgrade ? ' menu-nav-ready' : ''}" data-action="upgrades" aria-label="Upgrades — spend Data Credits" title="Spend Data Credits earned from runs">⚡ Upgrades <span class="credits-badge">${save.dataCredits}◈</span></button>
+          <button type="button" class="btn btn-secondary menu-nav-btn${dailyReady ? ' menu-nav-ready' : ''}" data-action="daily" aria-label="Daily Challenge${dailyReady ? ' — bonus ready' : ''}" title="${dailyReady ? 'Daily bonus ready to claim' : 'Daily challenge and streak bonus'}">📅 Daily${dailyReady ? '<span class="nav-badge" aria-hidden="true">!</span>' : ''}</button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="achievements" aria-label="Achievements" title="Track milestones and secrets">🏆 Achievements</button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="leaderboard" aria-label="Leaderboard" title="Compare scores">📊 Ranks</button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="settings" aria-label="Settings" title="Audio, controls, accessibility">⚙️ Settings</button>
           ${stage >= 4 ? '<button class="btn btn-ghost menu-hidden-btn" data-action="void" aria-label="Hidden">???</button>' : ''}
         </nav>
+        <p class="menu-help-row">
+          <button type="button" class="btn-text" data-action="help">❓ How to Play</button>
+        </p>
 
         <div class="sync-bar">
           <span class="sync-label">SYNC Lv.${save.profile.syncLevel}</span>
@@ -650,6 +658,31 @@ export class UIManager {
     `;
 
     this.bindMenuEvents();
+    this.showMenuHints(dailyReady, canAffordUpgrade);
+  }
+
+  /** Gentle one-time tips — clear without spoiling Grid mysteries. */
+  private showMenuHints(dailyReady: boolean, canAffordUpgrade: boolean): void {
+    const runs = this.save.save.stats.totalRuns;
+    if (runs <= 1) {
+      setTimeout(() => {
+        this.showToast('Collect shards during runs to earn Data Credits ◈', 'info');
+      }, 700);
+    } else if (runs <= 3 && this.save.save.dataCredits >= 40 && !canAffordUpgrade) {
+      setTimeout(() => {
+        this.showToast('Almost enough for an upgrade — keep collecting shards!', 'info');
+      }, 700);
+    }
+    if (dailyReady && runs > 0) {
+      setTimeout(() => {
+        this.showToast('Daily bonus ready — tap 📅 Daily', 'milestone');
+      }, runs <= 1 ? 2200 : 900);
+    }
+    if (canAffordUpgrade) {
+      setTimeout(() => {
+        this.showToast('You can afford an upgrade — tap ⚡ Upgrades', 'milestone');
+      }, runs <= 1 ? 3400 : 1200);
+    }
   }
 
   private bindMenuEvents(): void {
@@ -671,6 +704,7 @@ export class UIManager {
         else if (action === 'leaderboard') this.showScreen('leaderboard');
         else if (action === 'daily') this.showScreen('daily');
         else if (action === 'upgrades') this.showScreen('upgrades');
+        else if (action === 'help') this.showScreen('help');
         else if (action === 'void') {
           this.showToast('Not yet.', 'info');
           this.showAIWhisper('You found something that is not ready.', 'glitch');
@@ -756,13 +790,16 @@ export class UIManager {
   private renderUpgrades(): void {
     const credits = this.upgrades.getCredits();
     const ids = Object.keys(UPGRADES) as UpgradeId[];
+    const affordable = ids.filter((id) => this.upgrades.canAfford(id)).length;
 
     this.overlay.className = 'screen screen-upgrades modal-overlay';
     this.overlay.innerHTML = `
       <div class="modal panel panel-scroll animate-in">
         <h2 class="modal-title">UPGRADES</h2>
         <p class="upgrade-credits">◈ ${credits} Data Credits</p>
-        <p class="upgrade-hint">Earn credits by collecting shards each run</p>
+        <p class="upgrade-hint">${affordable > 0
+          ? `${affordable} upgrade${affordable > 1 ? 's' : ''} available now — pick one below`
+          : 'Earn credits by collecting shards and completing runs'}</p>
         <div class="upgrade-list">
           ${ids.map((id) => {
             const def = UPGRADES[id];
@@ -770,21 +807,24 @@ export class UIManager {
             const maxed = this.upgrades.isMaxed(id);
             const cost = this.upgrades.getCost(id);
             const canBuy = this.upgrades.canAfford(id);
+            const deficit = Math.max(0, cost - credits);
+            const buyLabel = maxed ? 'MAX' : canBuy ? `${cost}◈` : `+${deficit}◈`;
             return `
-              <div class="upgrade-item ${maxed ? 'maxed' : ''}">
+              <div class="upgrade-item ${maxed ? 'maxed' : ''} ${canBuy ? 'can-buy' : ''}">
                 <span class="upgrade-icon">${def.icon}</span>
                 <div class="upgrade-info">
                   <span class="upgrade-name">${def.name} ${maxed ? '(MAX)' : `Lv.${level}/${def.maxLevel}`}</span>
                   <span class="upgrade-desc">${def.description}</span>
+                  ${!maxed && !canBuy ? `<span class="upgrade-need">Need ${deficit} more ◈ — keep collecting shards</span>` : ''}
                 </div>
-                <button class="btn btn-primary btn-sm" data-upgrade="${id}" ${!canBuy ? 'disabled' : ''} aria-label="Buy ${def.name}">
-                  ${maxed ? '✓' : `${cost}◈`}
+                <button type="button" class="btn btn-primary btn-sm" data-upgrade="${id}" ${!canBuy ? 'disabled' : ''} aria-label="${maxed ? `${def.name} maxed` : canBuy ? `Buy ${def.name} for ${cost} credits` : `Need ${deficit} more credits for ${def.name}`}">
+                  ${maxed ? '✓' : buyLabel}
                 </button>
               </div>
             `;
           }).join('')}
         </div>
-        <button class="btn btn-secondary" data-action="back">← BACK</button>
+        <button type="button" class="btn btn-secondary" data-action="back">← BACK</button>
       </div>
     `;
 
@@ -798,6 +838,56 @@ export class UIManager {
         }
       });
     });
+
+    this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
+      this.audio.playMenuConfirm();
+      this.showScreen('menu');
+    });
+  }
+
+  private renderHelp(): void {
+    this.overlay.className = 'screen screen-help modal-overlay';
+    this.overlay.innerHTML = `
+      <div class="modal panel panel-scroll animate-in">
+        <h2 class="modal-title">HOW TO PLAY</h2>
+        <div class="help-section">
+          <h3 class="help-heading">Controls</h3>
+          <ul class="help-list">
+            <li><strong>Move</strong> — A/D or ←/→ (swipe on mobile)</li>
+            <li><strong>Phase</strong> — Space / W / ↑ — pass through one firewall</li>
+            <li><strong>Pause</strong> — Esc or ⏸ button</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h3 class="help-heading">Goal</h3>
+          <ul class="help-list">
+            <li>Dodge red firewalls in your lane</li>
+            <li>Collect cyan shards for score and <strong>Data Credits ◈</strong></li>
+            <li>Chain shards for combo multipliers</li>
+            <li>Near-misses (close dodges) give bonus points</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h3 class="help-heading">Pickups</h3>
+          <ul class="help-list">
+            <li><strong>Gold star</strong> — 2× score for 10 seconds</li>
+            <li><strong>Red bomb</strong> — avoid! Costs 100 points</li>
+            <li><strong>Powerups</strong> — shield, magnet, overclock, chronos</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h3 class="help-heading">Progress</h3>
+          <ul class="help-list">
+            <li>Spend <strong>Data Credits</strong> in ⚡ Upgrades for permanent boosts</li>
+            <li>Claim 📅 Daily bonus each day for extra credits</li>
+            <li>Sync XP (bottom bar) levels up your profile over time</li>
+            <li>Some achievements stay hidden until you discover them…</li>
+          </ul>
+        </div>
+        <p class="help-footnote">The Grid learns how you play. Keep syncing.</p>
+        <button type="button" class="btn btn-primary" data-action="back">GOT IT</button>
+      </div>
+    `;
 
     this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
       this.audio.playMenuConfirm();
@@ -1400,16 +1490,40 @@ export class UIManager {
       .mode-desc { display: block; font-size: 0.72rem; color: var(--color-textSecondary); margin-top: 4px; line-height: 1.3; }
       .mode-best { display: block; font-size: 0.68rem; color: var(--color-neonGold); margin-top: 6px; }
 
-      .menu-nav { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; position: relative; z-index: 3; }
+      .menu-nav { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; position: relative; z-index: 3; }
+      .menu-nav-label {
+        font-family: 'Orbitron', sans-serif; font-size: 0.62rem; letter-spacing: 0.2em;
+        color: var(--color-textSecondary); text-transform: uppercase; margin: 4px 0 10px;
+      }
       .menu-nav-btn {
         position: relative; z-index: 1; min-height: 44px;
         border: 1px solid rgba(255,255,255,0.22) !important;
+      }
+      .menu-nav-btn.menu-nav-ready {
+        border-color: rgba(255,215,0,0.45) !important;
+        box-shadow: 0 0 10px rgba(255,215,0,0.12);
       }
       .menu-nav-btn:hover, .menu-nav-btn:focus-visible {
         border-color: var(--color-neonCyan) !important;
         color: var(--color-neonCyan);
         box-shadow: 0 0 12px rgba(0,240,255,0.15);
       }
+      .menu-nav-btn:active { transform: scale(0.97); }
+      .nav-badge {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 16px; height: 16px; margin-left: 4px; border-radius: 50%;
+        background: var(--color-neonGold); color: var(--color-void);
+        font-size: 0.65rem; font-weight: 800; vertical-align: middle;
+        animation: badgePulse 1.5s ease-in-out infinite;
+      }
+      .menu-help-row { margin-bottom: 14px; }
+      .btn-text {
+        background: none; border: none; cursor: pointer; padding: 8px 12px;
+        font-family: 'Rajdhani', sans-serif; font-size: 0.85rem; font-weight: 600;
+        color: var(--color-neonCyan); letter-spacing: 0.06em;
+        text-decoration: underline; text-underline-offset: 3px;
+      }
+      .btn-text:hover, .btn-text:focus-visible { color: var(--color-neonGold); }
 
       .sync-bar { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
       .sync-label { font-family: 'Orbitron', sans-serif; color: var(--color-neonViolet); white-space: nowrap; }
@@ -1480,7 +1594,7 @@ export class UIManager {
       .hud-hint { text-align: center; font-size: 0.65rem; color: var(--color-textSecondary); opacity: 0.5; pointer-events: none; padding-bottom: 4px; }
 
       /* Modals */
-      .screen-gameover, .screen-settings, .screen-achievements, .screen-leaderboard, .screen-daily, .screen-upgrades {
+      .screen-gameover, .screen-settings, .screen-achievements, .screen-leaderboard, .screen-daily, .screen-upgrades, .screen-help {
         background: rgba(10, 14, 26, 0.92);
       }
       .modal-layer {
@@ -1563,13 +1677,31 @@ export class UIManager {
       .upgrade-hint { text-align: center; color: var(--color-textSecondary); font-size: 0.8rem; margin-bottom: 16px; }
       .upgrade-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
       .upgrade-item { display: flex; align-items: center; gap: 12px; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); }
+      .upgrade-item.can-buy { border-color: rgba(255,215,0,0.35); background: rgba(255,215,0,0.04); }
       .upgrade-item.maxed { border-color: var(--color-neonGold); opacity: 0.85; }
+      .upgrade-need { display: block; font-size: 0.68rem; color: var(--color-textSecondary); margin-top: 4px; }
       .upgrade-icon { font-size: 1.5rem; }
       .upgrade-info { flex: 1; }
       .upgrade-name { font-family: 'Orbitron', sans-serif; font-size: 0.8rem; display: block; }
       .upgrade-desc { font-size: 0.72rem; color: var(--color-textSecondary); }
       .btn-sm { padding: 6px 12px !important; font-size: 0.75rem !important; min-width: 56px; }
-      .btn-sm:disabled { opacity: 0.35; cursor: not-allowed; }
+      .btn-sm:disabled { opacity: 0.5; cursor: not-allowed; color: var(--color-textSecondary); background: rgba(255,255,255,0.06); }
+
+      .help-section { margin-bottom: 18px; text-align: left; }
+      .help-heading {
+        font-family: 'Orbitron', sans-serif; font-size: 0.75rem; letter-spacing: 0.12em;
+        color: var(--color-neonCyan); margin-bottom: 8px;
+      }
+      .help-list { list-style: none; padding: 0; margin: 0; }
+      .help-list li {
+        font-size: 0.88rem; color: var(--color-textSecondary); margin: 6px 0; padding-left: 12px;
+        border-left: 2px solid rgba(0,240,255,0.2);
+      }
+      .help-list strong { color: var(--color-textPrimary); }
+      .help-footnote {
+        text-align: center; font-size: 0.78rem; color: var(--color-neonViolet);
+        font-style: italic; margin: 8px 0 16px;
+      }
 
       .daily-bonus-amount { text-align: center; font-family: 'Orbitron', sans-serif; font-size: 1.8rem; color: var(--color-neonGold); margin: 16px 0 8px; }
       .daily-bonus-streak { text-align: center; color: var(--color-textSecondary); margin-bottom: 16px; }
