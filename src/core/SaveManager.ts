@@ -43,6 +43,8 @@ function defaultWorldMemory(): WorldMemory {
     riskProfile: 0,
     nearMissLifetime: 0,
     ghostReplay: null,
+    practiceCalloutSeen: false,
+    seenPickups: [],
   };
 }
 
@@ -61,6 +63,7 @@ function defaultSave(): SaveData {
       fontScale: 1.0,
       theme: 'dark',
       controlSensitivity: 1.0,
+      gridLoreEnabled: false,
     },
     stats: {
       totalRuns: 0,
@@ -126,6 +129,9 @@ function migrateSave(parsed: Partial<SaveData>): SaveData {
   if (merged.worldMemory.riskProfile === undefined) merged.worldMemory.riskProfile = 0;
   if (merged.worldMemory.nearMissLifetime === undefined) merged.worldMemory.nearMissLifetime = 0;
   if (merged.worldMemory.ghostReplay === undefined) merged.worldMemory.ghostReplay = null;
+  if (merged.worldMemory.practiceCalloutSeen === undefined) merged.worldMemory.practiceCalloutSeen = false;
+  if (!merged.worldMemory.seenPickups) merged.worldMemory.seenPickups = [];
+  if (merged.settings.gridLoreEnabled === undefined) merged.settings.gridLoreEnabled = false;
   merged.worldMemory.playerTitle = computePlayerTitle(merged.worldMemory, merged.stats);
   return merged;
 }
@@ -304,6 +310,25 @@ export class SaveManager {
   recordNearMissLifetime(): void {
     this.data.worldMemory.nearMissLifetime++;
     this.persist();
+  }
+
+  markPickupSeen(pickupId: string): void {
+    const seen = this.data.worldMemory.seenPickups;
+    if (!seen.includes(pickupId)) {
+      seen.push(pickupId);
+      this.persist();
+    }
+  }
+
+  markPracticeCalloutSeen(): void {
+    if (!this.data.worldMemory.practiceCalloutSeen) {
+      this.data.worldMemory.practiceCalloutSeen = true;
+      this.persist();
+    }
+  }
+
+  hasSeenPickup(pickupId: string): boolean {
+    return this.data.worldMemory.seenPickups.includes(pickupId);
   }
 
   recordRun(stats: RunStats): { newHighScore: boolean; xpGained: number; creditsEarned: number; syncUnlocks: string[] } {

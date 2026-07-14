@@ -1,15 +1,17 @@
 import type { GameMode, GameSettings, RunStats } from '@/types';
 import { getColorBlindPalette } from '@/config/designTokens';
-import { MODE_CONFIG, SYNC, GAME } from '@/config/constants';
+import { MODE_CONFIG, SYNC, GAME, UPGRADES } from '@/config/constants';
 import { GRID_SYNC, GRID_SYNC_COMPLETE_COPY } from '@/config/sentientConfig';
+import { RUN_THEME_LORE, getLoreWhisperSuffix, type RunThemeId, type GridMood } from '@/config/directorConfig';
+import { LEADERBOARD } from '@/config/leaderboardConfig';
 import { formatScore, formatTime } from '@/utils/math';
 import { SaveManager } from '@/core/SaveManager';
 import { AchievementManager } from '@/core/AchievementManager';
 import { UpgradeManager } from '@/core/UpgradeManager';
+import { GlobalLeaderboardService } from '@/core/GlobalLeaderboardService';
 import { EventBus } from '@/core/EventBus';
 import { AudioManager } from '@/core/AudioManager';
 import type { UpgradeId } from '@/types';
-import { UPGRADES } from '@/config/constants';
 
 type ScreenId = 'loading' | 'splash' | 'menu' | 'hud' | 'pause' | 'gameover' | 'settings' | 'achievements' | 'leaderboard' | 'daily' | 'upgrades' | 'help' | 'toast';
 
@@ -21,6 +23,7 @@ export class UIManager {
   private achievements: AchievementManager;
   private upgrades: UpgradeManager;
   private audio: AudioManager;
+  private globalLb: GlobalLeaderboardService;
   private callbacks: {
     onStartGame?: (mode: GameMode) => void;
     onResume?: () => void;
@@ -37,6 +40,7 @@ export class UIManager {
     achievements: AchievementManager,
     upgrades: UpgradeManager,
     audio: AudioManager,
+    globalLb: GlobalLeaderboardService,
   ) {
     this.root = container;
     this.events = events;
@@ -44,6 +48,7 @@ export class UIManager {
     this.achievements = achievements;
     this.upgrades = upgrades;
     this.audio = audio;
+    this.globalLb = globalLb;
 
     this.overlay = document.createElement('div');
     this.overlay.id = 'ui-overlay';
@@ -82,7 +87,7 @@ export class UIManager {
     this.events.on('community:hex_flash', (d) => this.flashHexFragment(d.fragment));
     this.events.on('ui:impossible_crash', () => this.showImpossibleCrash());
     this.events.on('grid:sync_complete', () => { /* handled at game over */ });
-    this.events.on('director:run_start', (d) => this.showRunTheme(d.label, d.subtitle, d.mood));
+    this.events.on('director:run_start', (d) => this.showRunTheme(d.label, d.subtitle, d.mood, d.theme as RunThemeId));
     this.events.on('director:mercy_pulse', () => {
       if (Math.random() < 0.5) this.showToast('The Grid eases pressure… briefly.', 'info');
     });
@@ -121,7 +126,7 @@ export class UIManager {
       case 'gameover': this.renderGameOver(data as RunStats & { newHighScore?: boolean; xpGained?: number }); break;
       case 'settings': this.renderSettings(); break;
       case 'achievements': this.renderAchievements(); break;
-      case 'leaderboard': this.renderLeaderboard(); break;
+      case 'leaderboard': void this.renderLeaderboard(); break;
       case 'daily': this.renderDaily(); break;
       case 'upgrades': this.renderUpgrades(); break;
       case 'help': this.renderHelp(); break;
@@ -210,7 +215,10 @@ export class UIManager {
       comboRing.style.strokeDasharray = `${circumference}`;
       comboRing.style.strokeDashoffset = `${circumference * (1 - stats.comboTimer)}`;
     }
-    if (phaseEl) phaseEl.style.width = `${stats.phase * 100}%`;
+    if (phaseEl) {
+      phaseEl.style.width = `${stats.phase * 100}%`;
+      phaseEl.parentElement?.setAttribute('aria-valuenow', String(Math.round(stats.phase * 100)));
+    }
     if (powerupsEl) {
       const labels: Record<string, string> = { shield: 'S', magnet: 'M', overclock: 'O', chronos: 'C' };
       let html = stats.powerups.map((p) =>
@@ -232,11 +240,15 @@ export class UIManager {
     }
     if (speedFill && stats.speedRatio !== undefined) {
       speedFill.style.width = `${stats.speedRatio * 100}%`;
+      speedFill.parentElement?.setAttribute('aria-valuenow', String(Math.round(stats.speedRatio * 100)));
     }
     if (challengeRow && stats.targetScore && stats.targetScore > 0) {
       challengeRow.classList.remove('hidden');
       const ratio = Math.min(1, stats.score / stats.targetScore);
-      if (challengeFill) challengeFill.style.width = `${ratio * 100}%`;
+      if (challengeFill) {
+        challengeFill.style.width = `${ratio * 100}%`;
+        challengeFill.parentElement?.setAttribute('aria-valuenow', String(Math.round(ratio * 100)));
+      }
       if (challengeText) challengeText.textContent = `${formatScore(stats.score)} / ${formatScore(stats.targetScore)}`;
     } else if (challengeRow) {
       challengeRow.classList.add('hidden');
@@ -386,7 +398,13 @@ export class UIManager {
       this.root.appendChild(el);
     }
     el.className = `ai-whisper ai-tone-${tone ?? 'whisper'}`;
-    el.textContent = text;
+    let display = text;
+    if (this.save.settings.gridLoreEnabled) {
+      const mood = (this.save.save.worldMemory.gridMood || 'curious') as GridMood;
+      const suffix = getLoreWhisperSuffix(mood);
+      if (suffix) display = `${text} ${suffix}`;
+    }
+    el.textContent = display;
     el.classList.add('visible');
     setTimeout(() => el.classList.remove('visible'), 4000);
   }
@@ -547,16 +565,21 @@ export class UIManager {
     `;
   }
 
-  showRunTheme(label: string, subtitle: string, mood: string): void {
+  showRunTheme(label: string, subtitle: string, mood: string, themeId?: RunThemeId): void {
+    const loreOn = this.save.settings.gridLoreEnabled;
+    let sub = subtitle;
+    if (loreOn && themeId && RUN_THEME_LORE[themeId]) {
+      sub = `${subtitle} — ${RUN_THEME_LORE[themeId]}`;
+    }
     if (this.save.settings.reducedMotion) {
-      this.showToast(`${label} — ${subtitle}`, 'milestone');
+      this.showToast(`${label} — ${sub}`, 'milestone');
       return;
     }
     const el = document.createElement('div');
     el.className = `run-theme-banner mood-${mood}`;
     el.innerHTML = `
       <p class="run-theme-label">${label}</p>
-      <p class="run-theme-sub">${subtitle}</p>
+      <p class="run-theme-sub">${sub}</p>
     `;
     this.root.appendChild(el);
     requestAnimationFrame(() => el.classList.add('visible'));
@@ -593,6 +616,7 @@ export class UIManager {
     const dailyReady = this.save.canClaimDailyBonus();
     const upgradeIds = Object.keys(UPGRADES) as UpgradeId[];
     const canAffordUpgrade = upgradeIds.some((id) => this.upgrades.canAfford(id));
+    const showPracticeCallout = !save.worldMemory.practiceCalloutSeen && save.stats.totalRuns < 2;
 
     let title: string = GAME.TITLE;
     if (syncComplete) title = 'THE GRID';
@@ -627,9 +651,10 @@ export class UIManager {
               : mode === 'challenge' ? save.highScores.challenge
               : save.highScores.endless;
             return `
-              <button class="mode-card" data-mode="${mode}" aria-label="Start ${conf.label} mode">
+              <button class="mode-card${mode === 'practice' && showPracticeCallout ? ' mode-card-callout' : ''}" data-mode="${mode}" aria-label="Start ${conf.label} mode${mode === 'practice' && showPracticeCallout ? ' — recommended for new pilots' : ''}">
+                ${mode === 'practice' && showPracticeCallout ? '<span class="mode-callout-badge">START HERE</span>' : ''}
                 <span class="mode-label">${conf.label}</span>
-                <span class="mode-desc">${conf.description}</span>
+                <span class="mode-desc">${mode === 'practice' && showPracticeCallout ? 'No pressure — learn controls safely' : conf.description}</span>
                 ${best > 0 ? `<span class="mode-best">BEST: ${formatScore(best)}</span>` : ''}
               </button>
             `;
@@ -641,7 +666,7 @@ export class UIManager {
           <button type="button" class="btn btn-secondary menu-nav-btn${canAffordUpgrade ? ' menu-nav-ready' : ''}" data-action="upgrades" aria-label="Upgrades — spend Data Credits" title="Spend Data Credits earned from runs">⚡ Upgrades <span class="credits-badge">${save.dataCredits}◈</span></button>
           <button type="button" class="btn btn-secondary menu-nav-btn${dailyReady ? ' menu-nav-ready' : ''}" data-action="daily" aria-label="Daily Challenge${dailyReady ? ' — bonus ready' : ''}" title="${dailyReady ? 'Daily bonus ready to claim' : 'Daily challenge and streak bonus'}">📅 Daily${dailyReady ? '<span class="nav-badge" aria-hidden="true">!</span>' : ''}</button>
           <button type="button" class="btn btn-secondary menu-nav-btn" data-action="achievements" aria-label="Achievements" title="Track milestones and secrets">🏆 Achievements</button>
-          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="leaderboard" aria-label="Leaderboard" title="Compare scores">📊 Ranks</button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="leaderboard" aria-label="Global leaderboard" title="Compare scores with all players">📊 Global Ranks</button>
           <button type="button" class="btn btn-secondary menu-nav-btn" data-action="settings" aria-label="Settings" title="Audio, controls, accessibility">⚙️ Settings</button>
           ${stage >= 4 ? '<button class="btn btn-ghost menu-hidden-btn" data-action="void" aria-label="Hidden">???</button>' : ''}
         </nav>
@@ -666,7 +691,7 @@ export class UIManager {
     const runs = this.save.save.stats.totalRuns;
     if (runs <= 1) {
       setTimeout(() => {
-        this.showToast('Collect shards during runs to earn Data Credits ◈', 'info');
+        this.showToast('New here? Try Practice mode — no death, same mechanics', 'info');
       }, 700);
     } else if (runs <= 3 && this.save.save.dataCredits >= 40 && !canAffordUpgrade) {
       setTimeout(() => {
@@ -720,37 +745,38 @@ export class UIManager {
       <div id="hype-vignette" class="hype-vignette"></div>
       <div id="reality-glitch" class="reality-glitch"></div>
       <div id="reality-badge" class="reality-badge hidden">REALITY</div>
-      <div class="hud-top">
-        <div class="hud-score-group">
+      <div class="hud-top" role="group" aria-label="Run stats">
+        <div class="hud-score-group" aria-label="Score">
           <span class="hud-label">SCORE</span>
-          <span id="hud-score" class="hud-score" aria-live="polite">0</span>
+          <span id="hud-score" class="hud-score" aria-live="polite" aria-atomic="true">0</span>
         </div>
-        <div id="hud-challenge" class="hud-challenge hidden">
+        <div id="hud-challenge" class="hud-challenge hidden" aria-label="Challenge target">
           <span class="hud-label-sm">TARGET</span>
-          <div class="challenge-bar"><div id="hud-challenge-fill" class="challenge-fill"></div></div>
+          <div class="challenge-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="hud-challenge-fill" class="challenge-fill"></div></div>
           <span id="hud-challenge-text" class="hud-challenge-text">0 / 5000</span>
         </div>
-        <div class="hud-time-group">
-          <span id="hud-time" class="hud-time">0:00</span>
+        <div class="hud-time-group" aria-label="Time alive">
+          <span class="sr-only">Time</span>
+          <span id="hud-time" class="hud-time" aria-live="polite">0:00</span>
         </div>
-        <button id="hud-pause" class="hud-pause btn-icon" aria-label="Pause game">⏸</button>
+        <button type="button" id="hud-pause" class="hud-pause btn-icon" aria-label="Pause game">⏸</button>
       </div>
-      <div class="hud-bottom">
-        <div class="hud-combo-wrap">
+      <div class="hud-bottom" role="group" aria-label="Combo and power">
+        <div class="hud-combo-wrap" aria-label="Combo multiplier">
           <svg class="combo-ring" viewBox="0 0 36 36" aria-hidden="true">
             <circle class="combo-ring-bg" cx="18" cy="18" r="16" fill="none" stroke-width="2"/>
             <circle id="hud-combo-ring" class="combo-ring-fill" cx="18" cy="18" r="16" fill="none" stroke-width="2"/>
           </svg>
-          <span id="hud-combo" class="hud-combo" aria-live="polite"></span>
+          <span id="hud-combo" class="hud-combo" aria-live="polite" aria-atomic="true"></span>
         </div>
-        <div class="hud-speed-row">
+        <div class="hud-speed-row" aria-label="Speed">
           <span class="hud-label-sm">VEL</span>
-          <span id="hud-speed" class="hud-speed">×1.0</span>
-          <div class="speed-bar"><div id="hud-speed-fill" class="speed-fill"></div></div>
+          <span id="hud-speed" class="hud-speed" aria-live="polite">×1.0</span>
+          <div class="speed-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="hud-speed-fill" class="speed-fill"></div></div>
         </div>
-        <div class="hud-phase">
+        <div class="hud-phase" aria-label="Phase shift cooldown">
           <span class="hud-label-sm">PHASE</span>
-          <div class="phase-bar"><div id="hud-phase-fill" class="phase-fill"></div></div>
+          <div class="phase-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="hud-phase-fill" class="phase-fill"></div></div>
         </div>
         <div id="hud-powerups" class="hud-powerups"></div>
       </div>
@@ -922,15 +948,39 @@ export class UIManager {
     });
   }
 
-  private renderGameOver(data: RunStats & { newHighScore?: boolean; xpGained?: number; creditsEarned?: number; syncUnlocks?: string[] }): void {
+  private renderGameOver(data: RunStats & {
+    newHighScore?: boolean;
+    xpGained?: number;
+    creditsEarned?: number;
+    syncUnlocks?: string[];
+    globalRank?: number;
+    globalTotal?: number;
+    creditsToNext?: number | null;
+  }): void {
     const rank = data.rankPercentile ?? 0;
     const rankMsg = rank >= 90 ? 'ELITE PILOT' : rank >= 70 ? 'SKILLED RUNNER' : rank >= 40 ? 'RISING SYNC' : 'KEEP TRAINING';
     const unlocks = data.syncUnlocks ?? [];
+    const creditsEarned = data.creditsEarned ?? 0;
+    const creditsToNext = data.creditsToNext;
+    let creditsLine = `+${creditsEarned} ◈ this run`;
+    if (creditsToNext === null) creditsLine += ' · all upgrades maxed';
+    else if (creditsToNext === 0) creditsLine += ' · upgrade ready!';
+    else if (creditsToNext !== undefined) creditsLine += ` · ${creditsToNext} ◈ until next upgrade`;
+
+    let globalLine = '';
+    if (data.globalRank && data.globalRank > 0) {
+      globalLine = `<p class="gameover-global-rank">Global rank #${data.globalRank}${data.globalTotal ? ` of ${data.globalTotal} pilots` : ''}</p>`;
+    } else if (this.globalLb.isEnabled() && data.mode !== 'practice') {
+      globalLine = '<p class="gameover-global-rank muted">Score submitted to global leaderboard</p>';
+    }
+
     this.overlay.className = 'screen screen-gameover modal-overlay';
     this.overlay.innerHTML = `
       <div class="modal panel animate-in gameover-panel">
         <h2 class="modal-title">${data.score > 0 ? 'RUN COMPLETE' : 'SYSTEM FAILURE'}</h2>
         <p class="gameover-player-title">${this.save.save.worldMemory.playerTitle || 'Pilot'}</p>
+        <p class="gameover-credits-line">${creditsLine}</p>
+        ${globalLine}
         ${data.newHighScore ? '<div class="new-high-score">★ NEW HIGH SCORE ★</div>' : ''}
         ${unlocks.length > 0 ? `<div class="unlock-banner">${unlocks.map((u) => `<span>🔓 ${u} UNLOCKED</span>`).join('')}</div>` : ''}
         ${(data.realitiesDiscovered?.length ?? 0) > 0 ? `<div class="reality-discovered-banner"><span>🌀 REALITIES DISCOVERED</span>${data.realitiesDiscovered!.map((r) => `<span class="reality-tag">${r.replace(/_/g, ' ')}</span>`).join('')}</div>` : ''}
@@ -994,6 +1044,7 @@ export class UIManager {
           ${this.sliderRow('Control Sensitivity', 'controlSensitivity', s.controlSensitivity, 0.5, 2, 0.1)}
           ${this.toggleRow('Reduced Motion', 'reducedMotion', s.reducedMotion)}
           ${this.toggleRow('High Contrast', 'highContrast', s.highContrast)}
+          ${this.toggleRow('Grid Lore hints', 'gridLoreEnabled', s.gridLoreEnabled)}
           ${this.selectRow('Color Blind Mode', 'colorBlindMode', s.colorBlindMode, [
             ['none', 'None'], ['deuteranopia', 'Deuteranopia'], ['protanopia', 'Protanopia'], ['tritanopia', 'Tritanopia'],
           ])}
@@ -1064,29 +1115,34 @@ export class UIManager {
   private renderAchievements(): void {
     const all = this.achievements.getAll();
     const progress = this.achievements.getProgress();
+    const standard = all.filter((a) => !a.mysterious);
+    const gridSecrets = all.filter((a) => a.mysterious);
+
+    const renderItem = (a: typeof all[0]): string => {
+      const unlocked = this.achievements.isUnlocked(a.id);
+      const hidden = a.mysterious && !unlocked;
+      const title = this.achievements.getDisplayTitle(a);
+      const desc = this.achievements.getDisplayDescription(a);
+      return `
+        <div class="ach-item ${unlocked ? 'unlocked' : 'locked'}" aria-label="${hidden ? 'Secret Grid achievement' : title}">
+          <span class="ach-icon">${hidden ? '❓' : a.icon}</span>
+          <div class="ach-info">
+            <span class="ach-title">${title}</span>
+            <span class="ach-desc">${desc}</span>
+          </div>
+        </div>
+      `;
+    };
 
     this.overlay.className = 'screen screen-achievements modal-overlay';
     this.overlay.innerHTML = `
       <div class="modal panel panel-scroll animate-in">
         <h2 class="modal-title">ACHIEVEMENTS</h2>
         <p class="ach-progress">${progress.unlocked} / ${progress.total} unlocked</p>
-        <div class="ach-list">
-          ${all.map((a) => {
-            const unlocked = this.achievements.isUnlocked(a.id);
-            const hidden = (a.secret || a.mysterious) && !unlocked;
-            const title = this.achievements.getDisplayTitle(a);
-            const desc = this.achievements.getDisplayDescription(a);
-            return `
-              <div class="ach-item ${unlocked ? 'unlocked' : 'locked'}" aria-label="${hidden ? 'Secret achievement' : title}">
-                <span class="ach-icon">${hidden ? '❓' : a.icon}</span>
-                <div class="ach-info">
-                  <span class="ach-title">${title}</span>
-                  <span class="ach-desc">${desc}</span>
-                </div>
-              </div>
-            `;
-          }).join('')}
-        </div>
+        <h3 class="ach-tier-label">Standard</h3>
+        <div class="ach-list">${standard.map(renderItem).join('')}</div>
+        <h3 class="ach-tier-label ach-tier-grid">Grid Secrets <span class="ach-tier-hint">??? until discovered</span></h3>
+        <div class="ach-list ach-list-grid">${gridSecrets.map(renderItem).join('')}</div>
         <button class="btn btn-primary" data-action="back">← BACK</button>
       </div>
     `;
@@ -1097,33 +1153,73 @@ export class UIManager {
     });
   }
 
-  private renderLeaderboard(): void {
+  private async renderLeaderboard(): Promise<void> {
     const save = this.save.save;
+    const modes = ['endless', 'timeAttack60', 'timeAttack120', 'challenge'] as const;
+    const globalOn = this.globalLb.isEnabled();
+
     this.overlay.className = 'screen screen-leaderboard modal-overlay';
     this.overlay.innerHTML = `
       <div class="modal panel panel-scroll animate-in">
-        <h2 class="modal-title">LEADERBOARD</h2>
-        ${(['endless', 'timeAttack60', 'timeAttack120', 'challenge'] as const).map((mode) => {
-          const entries = save.leaderboard[mode] ?? [];
-          const label = MODE_CONFIG[mode === 'timeAttack60' ? 'timeAttack60' : mode === 'timeAttack120' ? 'timeAttack120' : mode].label;
+        <h2 class="modal-title">GLOBAL RANKS</h2>
+        <p class="lb-loading">Syncing with the Grid…</p>
+      </div>
+    `;
+
+    const globalByMode: Record<string, Awaited<ReturnType<GlobalLeaderboardService['fetchTop']>>> = {};
+    if (globalOn) {
+      await Promise.all(modes.map(async (mode) => {
+        globalByMode[mode] = await this.globalLb.fetchTop(mode);
+      }));
+    }
+
+    const modeLabel = (mode: typeof modes[number]): string =>
+      MODE_CONFIG[mode === 'timeAttack60' ? 'timeAttack60' : mode === 'timeAttack120' ? 'timeAttack120' : mode].label;
+
+    const renderEntries = (
+      entries: { rank?: number; score: number; name?: string; date: string }[],
+      emptyMsg: string,
+    ): string => {
+      if (entries.length === 0) return `<p class="lb-empty">${emptyMsg}</p>`;
+      return `
+        <ol class="lb-list">
+          ${entries.map((e, i) => `
+            <li class="lb-entry">
+              <span class="lb-rank">#${e.rank ?? i + 1}</span>
+              <span class="lb-name">${e.name ?? 'Pilot'}</span>
+              <span class="lb-score">${formatScore(e.score)}</span>
+              <span class="lb-date">${new Date(e.date).toLocaleDateString()}</span>
+            </li>
+          `).join('')}
+        </ol>
+      `;
+    };
+
+    this.overlay.innerHTML = `
+      <div class="modal panel panel-scroll animate-in">
+        <h2 class="modal-title">GLOBAL RANKS</h2>
+        ${globalOn
+          ? '<p class="lb-subtitle">All pilots on the network</p>'
+          : `<p class="lb-subtitle">Global API not configured — showing your local runs. <a class="lb-setup-link" href="${LEADERBOARD.SETUP_URL}" target="_blank" rel="noopener">Enable global ranks →</a></p>`}
+        ${modes.map((mode) => {
+          const globalEntries = globalByMode[mode] ?? [];
+          const localEntries = save.leaderboard[mode] ?? [];
           return `
             <div class="lb-section">
-              <h3 class="lb-mode">${label}</h3>
-              ${entries.length === 0 ? '<p class="lb-empty">No entries yet</p>' : `
-                <ol class="lb-list">
-                  ${entries.map((e, i) => `
-                    <li class="lb-entry">
-                      <span class="lb-rank">#${i + 1}</span>
-                      <span class="lb-score">${formatScore(e.score)}</span>
-                      <span class="lb-date">${new Date(e.date).toLocaleDateString()}</span>
-                    </li>
-                  `).join('')}
-                </ol>
-              `}
+              <h3 class="lb-mode">${modeLabel(mode)}</h3>
+              ${globalOn ? `
+                <p class="lb-tier-label">Worldwide</p>
+                ${renderEntries(globalEntries, 'No global scores yet — be the first!')}
+              ` : ''}
+              <p class="lb-tier-label">${globalOn ? 'Your runs' : 'Personal best runs'}</p>
+              ${renderEntries(
+                localEntries.map((e, i) => ({ ...e, rank: i + 1, name: save.profile.name })),
+                'No local runs yet',
+              )}
             </div>
           `;
         }).join('')}
-        <button class="btn btn-primary" data-action="back">← BACK</button>
+        <button type="button" class="btn btn-primary" data-action="back">← BACK</button>
       </div>
     `;
 
@@ -1711,6 +1807,53 @@ export class UIManager {
       body.light-theme .panel { background: rgba(255,255,255,0.95); color: #0a0e1a; }
       body.high-contrast .mode-card { border-width: 2px; }
       body.high-contrast .btn-primary { border: 2px solid #fff; }
+      body.high-contrast .menu-nav-btn { border-width: 2px !important; }
+      body.high-contrast .btn-secondary { border-width: 2px; }
+      body.high-contrast .hud-score, body.high-contrast .hud-time { text-shadow: none; font-weight: 900; }
+
+      .sr-only {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+      }
+
+      .mode-card-callout {
+        border-color: var(--color-neonGold) !important;
+        box-shadow: 0 0 16px rgba(255,215,0,0.25);
+        position: relative;
+      }
+      .mode-callout-badge {
+        position: absolute; top: 8px; right: 8px;
+        font-family: 'Orbitron', sans-serif; font-size: 0.55rem; font-weight: 800;
+        letter-spacing: 0.08em; color: var(--color-void); background: var(--color-neonGold);
+        padding: 3px 6px; border-radius: 4px;
+      }
+
+      .gameover-credits-line {
+        text-align: center; font-family: 'Orbitron', sans-serif; font-size: 0.78rem;
+        color: var(--color-neonGold); margin: 0 0 8px; letter-spacing: 0.06em;
+      }
+      .gameover-global-rank {
+        text-align: center; font-size: 0.85rem; color: var(--color-neonCyan); margin-bottom: 10px;
+      }
+      .gameover-global-rank.muted { color: var(--color-textSecondary); font-size: 0.75rem; }
+
+      .ach-tier-label {
+        font-family: 'Orbitron', sans-serif; font-size: 0.7rem; letter-spacing: 0.15em;
+        color: var(--color-neonCyan); text-align: left; margin: 16px 0 8px;
+      }
+      .ach-tier-grid { color: var(--color-neonViolet); }
+      .ach-tier-hint { font-size: 0.62rem; color: var(--color-textSecondary); font-weight: 400; letter-spacing: 0.05em; }
+
+      .lb-subtitle { text-align: center; color: var(--color-textSecondary); font-size: 0.82rem; margin-bottom: 16px; }
+      .lb-setup-link { color: var(--color-neonCyan); }
+      .lb-loading { text-align: center; color: var(--color-textSecondary); padding: 24px; }
+      .lb-tier-label { font-size: 0.65rem; letter-spacing: 0.12em; color: var(--color-textSecondary); margin: 8px 0 4px; text-transform: uppercase; }
+      .lb-name { flex: 1; font-size: 0.78rem; color: var(--color-textSecondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      @media (max-width: 480px) {
+        .menu-nav-btn, .btn, .mode-card { min-height: 48px; }
+        .hud-pause { min-width: 48px; min-height: 48px; }
+      }
 
       @media (min-width: 768px) {
         .mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
