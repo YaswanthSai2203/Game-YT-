@@ -8,7 +8,7 @@ export const RUN_EVOLUTION = {
   SKY_ALIVE: 500,
 } as const;
 
-/** Ambient environment events — cosmetic only, rotate every ~90s */
+/** Ambient environment events — each triggers a full biome swap */
 export type EnvEventId =
   | 'none'
   | 'data_rain'
@@ -20,18 +20,106 @@ export type EnvEventId =
   | 'quantum_vortex'
   | 'neon_dust';
 
+/** Completely distinct background biomes — not palette swaps */
+export type BackgroundBiomeId =
+  | 'cyber_void'
+  | 'inferno_grid'
+  | 'quantum_ocean'
+  | 'null_zone'
+  | 'echo_chamber'
+  | 'chrono_rift'
+  | 'neural_web'
+  | 'matrix_frost'
+  | 'data_storm'
+  | 'nebula_drift'
+  | 'vault_dimension';
+
 export const ENV_EVENT_CYCLE: EnvEventId[] = [
-  'none',
-  'data_rain',
   'nebula',
-  'binary_storm',
-  'firewall_lightning',
+  'inferno_grid',
   'quantum_vortex',
-  'neon_dust',
+  'binary_storm',
   'frozen_matrix',
+  'firewall_lightning',
+  'data_rain',
+  'neon_dust',
 ];
 
-export const ENV_EVENT_INTERVAL = 88;
+/** Each env event swaps to a completely different biome */
+export const ENV_EVENT_BIOMES: Record<EnvEventId, BackgroundBiomeId> = {
+  none: 'cyber_void',
+  data_rain: 'matrix_frost',
+  firewall_lightning: 'inferno_grid',
+  nebula: 'nebula_drift',
+  binary_storm: 'data_storm',
+  frozen_matrix: 'matrix_frost',
+  inferno_grid: 'inferno_grid',
+  quantum_vortex: 'quantum_ocean',
+  neon_dust: 'echo_chamber',
+};
+
+/** Fracture / theme string → full biome */
+export const THEME_BIOMES: Record<string, BackgroundBiomeId> = {
+  default: 'cyber_void',
+  inferno: 'inferno_grid',
+  matrix: 'matrix_frost',
+  quantum: 'quantum_ocean',
+  ghost: 'echo_chamber',
+  gold: 'vault_dimension',
+  void: 'cyber_void',
+  chrono: 'chrono_rift',
+  null: 'null_zone',
+};
+
+/** AI Director run theme → starting biome */
+export const RUN_THEME_BIOMES: Record<string, BackgroundBiomeId> = {
+  standard: 'cyber_void',
+  first_contact: 'nebula_drift',
+  trial_by_fire: 'inferno_grid',
+  mercy_protocol: 'quantum_ocean',
+  hunter: 'neural_web',
+  echo_run: 'echo_chamber',
+  corruption: 'data_storm',
+  recognition: 'chrono_rift',
+};
+
+export const BIOME_SWAP_INTERVAL = 75;
+export const BIOME_SWAP_FADE = 1.2;
+
+export function resolveBiomeFromTheme(theme: string): BackgroundBiomeId {
+  return THEME_BIOMES[theme] ?? 'cyber_void';
+}
+
+export function resolveBiomeFromRunTheme(runTheme: string): BackgroundBiomeId {
+  return RUN_THEME_BIOMES[runTheme] ?? 'cyber_void';
+}
+
+export function resolveBiomeFromEnvEvent(event: EnvEventId): BackgroundBiomeId {
+  return ENV_EVENT_BIOMES[event] ?? 'cyber_void';
+}
+
+/** Pick a random biome for variety (seeded) */
+export const ALL_BIOMES: BackgroundBiomeId[] = [
+  'cyber_void',
+  'inferno_grid',
+  'quantum_ocean',
+  'echo_chamber',
+  'chrono_rift',
+  'neural_web',
+  'matrix_frost',
+  'data_storm',
+  'nebula_drift',
+];
+
+export function pickBiomeFromSeed(seed: number, runTheme: string): BackgroundBiomeId {
+  const base = resolveBiomeFromRunTheme(runTheme);
+  const mixed = (seed * 1103515245 + 12345) >>> 0;
+  const roll = (mixed % 1000) / 1000;
+  if (roll < 0.3) {
+    return ALL_BIOMES[mixed % ALL_BIOMES.length] ?? base;
+  }
+  return base;
+}
 
 export const BACKGROUND = {
   /** Parallax speed multipliers per layer label */

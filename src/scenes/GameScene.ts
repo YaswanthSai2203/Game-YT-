@@ -21,7 +21,7 @@ import {
   createScoreBoostPickup, createBombPickup,
 } from '@/graphics/ProceduralAssets';
 import { LivingBackgroundSystem } from '@/systems/LivingBackgroundSystem';
-import { RUN_EVOLUTION } from '@/config/backgroundConfig';
+import { RUN_EVOLUTION, pickBiomeFromSeed } from '@/config/backgroundConfig';
 import { QuantumRealitySystem } from '@/systems/QuantumRealitySystem';
 import { SentientAISystem } from '@/systems/SentientAISystem';
 import { MythEventSystem } from '@/systems/MythEventSystem';
@@ -233,14 +233,19 @@ export class GameScene extends BaseScene {
     this.director.emitRunStart(this.runPlan);
     this.audio.setGridMood(this.runPlan.mood);
 
-    const theme = this.save.save.unlocks.selectedTheme;
     const bgSeed = this.config.seed ?? this.runPlan.theme.length * 9973 + this.save.save.stats.totalRuns;
+    const startBiome = pickBiomeFromSeed(bgSeed, this.runPlan.theme);
     this.livingBg = new LivingBackgroundSystem(this.container, this.gameWidth, this.gameHeight, {
-      theme,
+      biome: startBiome,
       totalRuns: this.save.save.stats.totalRuns,
       seed: bgSeed,
       reducedMotion: this.save.settings.reducedMotion,
-      directorWeather: this.runPlan.weather,
+      onBiomeChange: (label) => {
+        this.events.emit('ui:toast', {
+          message: `Dimension shift — ${label}`,
+          type: 'info',
+        });
+      },
     });
 
     this.ghostReplay = new GhostReplaySystem();
@@ -553,7 +558,7 @@ export class GameScene extends BaseScene {
       this.gridSync.onDimensionEntered(dim.id);
       this.events.emit('grid:dimension', { id: dim.id });
     }
-    this.livingBg?.setTheme(theme, true);
+    this.livingBg?.setTheme(theme);
     this.livingBg?.setFractureActive(true, 0.85);
     this.watcher?.setFractureHidden(true);
     if (this.save.settings.reducedMotion) return;
@@ -562,8 +567,7 @@ export class GameScene extends BaseScene {
   }
 
   private onRealityFractureEnd(): void {
-    const theme = this.save.save.unlocks.selectedTheme;
-    this.livingBg?.setTheme(theme, true);
+    this.livingBg?.restoreBaseBiome();
     this.livingBg?.setFractureActive(false);
     this.watcher?.setFractureHidden(false);
     this.audio.setRealityPitch(1);
