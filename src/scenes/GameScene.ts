@@ -416,6 +416,7 @@ export class GameScene extends BaseScene {
     this.updateLaneLayout();
     this.spawner.setModifiers(this.reality.getModifiers());
     this.spawner.update(scaledDt, this.gameHeight);
+    this.checkPickupHints();
     this.updateGhostRival(scaledDt);
     this.combo.update(dt);
     this.particles.update(dt);
@@ -790,6 +791,21 @@ export class GameScene extends BaseScene {
           this.collectBomb(entity.id);
           break;
       }
+    }
+  }
+
+  private checkPickupHints(): void {
+    for (const entity of this.spawner.getEntities()) {
+      if (!entity.active || entity.collected) continue;
+      if (entity.type !== 'bomb' && entity.type !== 'score_boost') continue;
+      if (this.save.hasSeenPickup(entity.type)) continue;
+      if (entity.y < 40 || entity.y > this.gameHeight) continue;
+
+      this.save.markPickupSeen(entity.type);
+      const message = entity.type === 'bomb'
+        ? 'Data trap! Avoid it — −100 points'
+        : 'Gold star — double points for 10 seconds!';
+      this.events.emit('ui:toast', { message, type: 'info' });
     }
   }
 

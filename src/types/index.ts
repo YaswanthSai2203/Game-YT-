@@ -39,6 +39,8 @@ export interface GameSettings {
   fontScale: number;
   theme: ThemeMode;
   controlSensitivity: number;
+  /** When on, run themes and whispers include extra context */
+  gridLoreEnabled: boolean;
 }
 
 export interface GameStats {
@@ -62,6 +64,7 @@ export interface LeaderboardEntry {
   score: number;
   date: string;
   mode: GameMode;
+  name?: string;
 }
 
 export interface AchievementDef {
@@ -171,6 +174,9 @@ export interface WorldMemory {
   riskProfile: number;
   nearMissLifetime: number;
   ghostReplay: GhostRecording | null;
+  /** First-time UX hints */
+  practiceCalloutSeen: boolean;
+  seenPickups: string[];
 }
 
 export interface SaveData {

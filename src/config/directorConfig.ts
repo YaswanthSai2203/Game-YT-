@@ -97,6 +97,27 @@ export const RUN_THEMES: Record<RunThemeId, {
   },
 };
 
+/** Extra context when Settings → Grid Lore is enabled */
+export const RUN_THEME_LORE: Partial<Record<RunThemeId, string>> = {
+  first_contact: 'Spawn rate reduced — the Grid is measuring your reactions.',
+  trial_by_fire: 'Firewall density increased — a deliberate stress test.',
+  mercy_protocol: 'You struggled recently. The Grid is giving you room to recover.',
+  hunter: 'Adaptive Protocol active — spawns target habits you repeat.',
+  echo_run: 'Your best lane path replays as a ghost rival.',
+  corruption: 'Myth residue detected — fractures and anomalies are more likely.',
+  recognition: 'You have proven consistency. Rewards are slightly richer.',
+};
+
+export function getLoreWhisperSuffix(mood: GridMood): string {
+  switch (mood) {
+    case 'curious': return '(It is still profiling you.)';
+    case 'testing': return '(Difficulty may shift mid-run.)';
+    case 'aggressive': return '(Expect tighter spawns.)';
+    case 'respectful': return '(You earned this tempo.)';
+    default: return '';
+  }
+}
+
 export const MOOD_WHISPERS: Record<GridMood, string[]> = {
   curious: [
     'Interesting rhythm.',

@@ -65,6 +65,18 @@ export class UpgradeManager {
     return this.save.save.dataCredits;
   }
 
+  /** Credits needed for the cheapest unmaxed upgrade, or null if all maxed. */
+  getCreditsToNextUpgrade(): number | null {
+    const credits = this.save.save.dataCredits;
+    let minDeficit = Infinity;
+    for (const id of Object.keys(UPGRADES) as UpgradeId[]) {
+      if (this.isMaxed(id)) continue;
+      const deficit = this.getCost(id) - credits;
+      if (deficit < minDeficit) minDeficit = deficit;
+    }
+    return minDeficit === Infinity ? null : Math.max(0, minDeficit);
+  }
+
   addCredits(amount: number): void {
     this.save.save.dataCredits += amount;
     this.save.persist();

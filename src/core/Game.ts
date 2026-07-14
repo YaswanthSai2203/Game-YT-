@@ -13,6 +13,7 @@ import { GameScene } from '@/scenes/GameScene';
 import { UIManager } from '@/ui/UIManager';
 import { clamp } from '@/utils/math';
 import { FAKE_ENDING_SCORE } from '@/config/sentientConfig';
+import { GlobalLeaderboardService } from '@/core/GlobalLeaderboardService';
 
 export class Game {
   private app!: Application;
@@ -26,6 +27,7 @@ export class Game {
   private scenes!: SceneManager;
   private ui!: UIManager;
   private gameScene!: GameScene;
+  private globalLb = new GlobalLeaderboardService();
 
   private currentMode: GameMode = 'endless';
   private isPaused = false;
@@ -48,6 +50,7 @@ export class Game {
       this.achievements = new AchievementManager(this.events, this.save),
       this.upgrades,
       this.audio = new AudioManager(this.save),
+      this.globalLb,
     );
 
     this.ui.showScreen('loading');
@@ -154,6 +157,9 @@ export class Game {
   }
 
   private async startGameWithCountdown(mode: GameMode): Promise<void> {
+    if (mode === 'practice') {
+      this.save.markPracticeCalloutSeen();
+    }
     this.audio.resume();
     this.currentMode = mode;
     this.isPaused = false;
@@ -204,8 +210,17 @@ export class Game {
     const { newHighScore, xpGained, creditsEarned, syncUnlocks } = this.save.recordRun(stats);
     const mem = this.save.save.worldMemory;
 
-    const showOver = (): void => {
-      this.ui.showScreen('gameover', { ...stats, newHighScore, xpGained, creditsEarned, syncUnlocks });
+    const showOver = (globalRank?: number, globalTotal?: number): void => {
+      this.ui.showScreen('gameover', {
+        ...stats,
+        newHighScore,
+        xpGained,
+        creditsEarned,
+        syncUnlocks,
+        globalRank,
+        globalTotal,
+        creditsToNext: this.upgrades.getCreditsToNextUpgrade(),
+      });
     };
 
     if (syncCompleted) {
@@ -213,13 +228,23 @@ export class Game {
       return;
     }
 
-    if (stats.score >= FAKE_ENDING_SCORE && !mem.fakeEndingSeen) {
-      void this.ui.playFakeEnding(stats.score).then(() => {
-        this.save.markFakeEndingSeen();
-        showOver();
-      });
+    const afterGlobal = (globalRank?: number, globalTotal?: number): void => {
+      if (stats.score >= FAKE_ENDING_SCORE && !mem.fakeEndingSeen) {
+        void this.ui.playFakeEnding(stats.score).then(() => {
+          this.save.markFakeEndingSeen();
+          showOver(globalRank, globalTotal);
+        });
+      } else {
+        showOver(globalRank, globalTotal);
+      }
+    };
+
+    if (stats.mode !== 'practice' && this.globalLb.isEnabled()) {
+      void this.globalLb.submit(stats.mode, stats.score, mem.playerTitle || 'Pilot').then((result) => {
+        afterGlobal(result.rank, result.totalPlayers);
+      }).catch(() => afterGlobal());
     } else {
-      showOver();
+      afterGlobal();
     }
   }
 
