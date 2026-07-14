@@ -12,14 +12,11 @@ interface ScoreEntry {
 }
 
 function getRedis(): Redis | null {
-  try {
-    if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-      return null;
-    }
-    return Redis.fromEnv();
-  } catch {
-    return null;
-  }
+  // Vercel Upstash integration may use UPSTASH_* or KV_REST_API_* names
+  const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
+  if (!url || !token) return null;
+  return new Redis({ url, token });
 }
 
 async function loadMode(redis: Redis, mode: string): Promise<ScoreEntry[]> {
