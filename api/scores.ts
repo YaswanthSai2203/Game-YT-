@@ -43,7 +43,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     res.status(503).json({
       ok: false,
       error: 'storage_unavailable',
-      hint: 'Add Upstash Redis from Vercel Storage (see docs/VERCEL_LEADERBOARD.md)',
+      hint: 'Connect Upstash Redis to this project, then redeploy. Required env: UPSTASH_REDIS_REST_URL + TOKEN (or KV_REST_API_URL + TOKEN).',
+      configured: {
+        upstash: !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN),
+        kv: !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN),
+      },
     });
     return;
   }
