@@ -363,6 +363,11 @@ export class GameScene extends BaseScene {
     this.firstMoveLogged = false;
     this.currentAudioLayer = 'none';
 
+    this.ghostReplay = new GhostReplaySystem();
+    this.ghostReplay.setLaneCenters(this.laneCenters, this.playerY);
+    this.ghostReplay.loadPlayback(this.save.save.worldMemory.ghostReplay, this.container);
+    this.ghostReplay.startRecording(this.config.mode);
+
     if (this.upgrades.hasStartShield()) {
       this.hasShield = true;
       this.activePowerups.push({ type: 'shield', timer: POWERUP.DURATION.shield });
