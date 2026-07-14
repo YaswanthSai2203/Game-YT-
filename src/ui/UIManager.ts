@@ -33,6 +33,8 @@ export class UIManager {
   private globalLb: GlobalLeaderboardService;
   private milestoneSvc = new CommunityMilestoneService();
   private milestoneStatus: MilestoneStatus | null = null;
+  private replayReturnTo: 'menu' | 'profile' = 'menu';
+  private replayEscapeHandler: ((e: KeyboardEvent) => void) | null = null;
   private callbacks: {
     onStartGame?: (mode: GameMode) => void;
     onResume?: () => void;
@@ -126,6 +128,9 @@ export class UIManager {
   showScreen(id: ScreenId, data?: unknown): void {
     if (id !== 'pause') {
       this.removeModals();
+    }
+    if (id !== 'replay') {
+      this.teardownReplayEscape();
     }
     switch (id) {
       case 'loading': this.renderLoading(); break;
@@ -691,7 +696,7 @@ export class UIManager {
           <button type="button" class="btn btn-secondary menu-nav-btn${canAffordUpgrade ? ' menu-nav-ready' : ''}" data-action="upgrades" aria-label="Upgrades — spend Data Credits" title="Spend Data Credits earned from runs">⚡ Upgrades <span class="credits-badge">${save.dataCredits}◈</span></button>
           <button type="button" class="btn btn-secondary menu-nav-btn" data-action="loadout" aria-label="Loadout — cores, trails, themes" title="Customize your pilot">🎨 Loadout</button>
           <button type="button" class="btn btn-secondary menu-nav-btn" data-action="profile" aria-label="Pilot profile and stats" title="Lifetime stats and playstyle">👤 Profile</button>
-          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="replay" aria-label="Ghost replay viewer" title="Watch your saved echo run">👻 Echo Replay</button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="replay" aria-label="Echo replay viewer" title="Review your saved ghost run path">👻 Echo Replay</button>
           <button type="button" class="btn btn-secondary menu-nav-btn${dailyReady ? ' menu-nav-ready' : ''}" data-action="daily" aria-label="Daily Challenge${dailyReady ? ' — bonus ready' : ''}" title="${dailyReady ? 'Daily bonus ready to claim' : 'Daily challenge and streak bonus'}">📅 Daily${dailyReady ? '<span class="nav-badge" aria-hidden="true">!</span>' : ''}</button>
           <button type="button" class="btn btn-secondary menu-nav-btn" data-action="weekly" aria-label="Weekly challenge" title="Community seeded weekly run">🌐 Weekly</button>
           <button type="button" class="btn btn-secondary menu-nav-btn" data-action="achievements" aria-label="Achievements" title="Track milestones and secrets">🏆 Achievements</button>
@@ -776,7 +781,7 @@ export class UIManager {
         else if (action === 'weekly') this.showScreen('weekly');
         else if (action === 'loadout') this.showScreen('loadout');
         else if (action === 'profile') this.showScreen('profile');
-        else if (action === 'replay') this.showScreen('replay');
+        else if (action === 'replay') this.openReplay('menu');
         else if (action === 'upgrades') this.showScreen('upgrades');
         else if (action === 'help') this.showScreen('help');
         else if (action === 'void') {
@@ -1344,19 +1349,57 @@ export class UIManager {
     });
   }
 
+  private openReplay(from: 'menu' | 'profile' = 'menu'): void {
+    this.replayReturnTo = from;
+    this.showScreen('replay');
+  }
+
+  private leaveReplay(): void {
+    this.teardownReplayEscape();
+    this.audio.playMenuConfirm();
+    this.showScreen(this.replayReturnTo);
+  }
+
+  private teardownReplayEscape(): void {
+    if (this.replayEscapeHandler) {
+      window.removeEventListener('keydown', this.replayEscapeHandler);
+      this.replayEscapeHandler = null;
+    }
+  }
+
+  private bindReplayEscape(): void {
+    this.teardownReplayEscape();
+    this.replayEscapeHandler = (e: KeyboardEvent) => {
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        this.leaveReplay();
+      }
+    };
+    window.addEventListener('keydown', this.replayEscapeHandler);
+  }
+
   private renderReplayViewer(): void {
     const replay = this.save.save.worldMemory.ghostReplay;
     this.overlay.className = 'screen screen-replay modal-overlay';
+    this.bindReplayEscape();
+
+    const backBtn = `<button type="button" class="btn btn-secondary btn-sm replay-back-top" data-action="back">← BACK</button>`;
+    const explain = `<p class="replay-sub">Your saved <strong>ghost echo</strong> — a recording of which lanes you used on a strong run. In-game, a faint ghost can race beside you. Here you can review that path or share it.</p>`;
+    const backLabel = this.replayReturnTo === 'profile' ? '← BACK TO PROFILE' : '← BACK TO MENU';
+
     if (!replay || replay.frames.length < 2) {
       this.overlay.innerHTML = `
         <div class="modal panel animate-in replay-viewer">
-          <h2 class="modal-title">GHOST REPLAY</h2>
-          <p class="replay-sub">No replay saved yet. Finish a strong run to record your lane path.</p>
-          <button type="button" class="btn btn-primary" data-action="back">← BACK</button>
+          <div class="replay-header">
+            ${backBtn}
+            <h2 class="modal-title">ECHO REPLAY</h2>
+          </div>
+          ${explain}
+          <p class="replay-empty">No echo saved yet. Finish a solid run (score within ~85% of your best) to record one.</p>
+          <button type="button" class="btn btn-primary" data-action="back">${backLabel}</button>
         </div>`;
-      this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
-        this.audio.playMenuConfirm();
-        this.showScreen('menu');
+      this.overlay.querySelectorAll('[data-action="back"]').forEach((btn) => {
+        btn.addEventListener('click', () => this.leaveReplay());
       });
       return;
     }
@@ -1365,17 +1408,22 @@ export class UIManager {
     const frames = replay.frames;
     this.overlay.innerHTML = `
       <div class="modal panel animate-in replay-viewer">
-        <h2 class="modal-title">GHOST REPLAY</h2>
-        <p class="replay-sub">Lane path from your saved echo — share or study your line.</p>
-        <div class="replay-stats">
-          Mode: ${replay.mode} · Duration: ${formatTime(duration)} · Score: ${formatScore(replay.score)} · ${frames.length} samples
+        <div class="replay-header">
+          ${backBtn}
+          <h2 class="modal-title">ECHO REPLAY</h2>
         </div>
-        <div class="replay-canvas-wrap"><canvas id="replay-canvas" width="400" height="220"></canvas></div>
-        <div class="replay-actions">
-          <button type="button" class="btn btn-primary" id="btn-replay-share">Share</button>
-          <button type="button" class="btn btn-secondary" id="btn-replay-copy">Copy JSON</button>
-          <button type="button" class="btn btn-secondary" data-action="back">← BACK</button>
+        <div class="replay-panel-scroll">
+          ${explain}
+          <div class="replay-stats">
+            Mode: ${replay.mode} · Duration: ${formatTime(duration)} · Score: ${formatScore(replay.score)} · ${frames.length} samples
+          </div>
+          <div class="replay-canvas-wrap"><canvas id="replay-canvas" width="400" height="220"></canvas></div>
+          <div class="replay-actions">
+            <button type="button" class="btn btn-primary" id="btn-replay-share">Share</button>
+            <button type="button" class="btn btn-secondary" id="btn-replay-copy">Copy JSON</button>
+          </div>
         </div>
+        <button type="button" class="btn btn-primary replay-back-bottom" data-action="back">${backLabel}</button>
       </div>`;
 
     const canvas = this.overlay.querySelector('#replay-canvas') as HTMLCanvasElement;
@@ -1402,9 +1450,8 @@ export class UIManager {
       await navigator.clipboard.writeText(payload);
       this.showToast('Replay JSON copied', 'milestone');
     });
-    this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
-      this.audio.playMenuConfirm();
-      this.showScreen('menu');
+    this.overlay.querySelectorAll('[data-action="back"]').forEach((btn) => {
+      btn.addEventListener('click', () => this.leaveReplay());
     });
   }
 
@@ -1483,7 +1530,7 @@ export class UIManager {
     `;
     this.overlay.querySelector('[data-action="replay"]')?.addEventListener('click', () => {
       this.audio.playMenuConfirm();
-      this.showScreen('replay');
+      this.openReplay('profile');
     });
     this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
       this.audio.playMenuConfirm();
@@ -2028,6 +2075,13 @@ export class UIManager {
       .screen-gameover, .screen-settings, .screen-achievements, .screen-leaderboard, .screen-daily, .screen-upgrades, .screen-help {
         background: rgba(10, 14, 26, 0.92);
       }
+      .screen-replay, .screen-profile, .screen-loadout, .screen-weekly, .screen-daily {
+        overflow-y: auto;
+        align-items: flex-start;
+        justify-content: center;
+        padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+        -webkit-overflow-scrolling: touch;
+      }
       .modal-layer {
         position: absolute; inset: 0; z-index: 200;
         display: flex; align-items: center; justify-content: center;
@@ -2242,8 +2296,18 @@ export class UIManager {
       .hud-skin-titan .hud-score { font-size: 1.6rem; font-weight: 900; }
       .hud-skin-titan .hud-time { font-size: 1.1rem; }
 
-      .replay-viewer { max-width: 440px; }
-      .replay-sub { text-align: center; color: var(--color-textSecondary); font-size: 0.85rem; margin-bottom: 12px; }
+      .replay-viewer { max-width: 440px; width: 90%; }
+      .replay-header {
+        display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+        position: sticky; top: 0; z-index: 2; background: rgba(18,24,41,0.98);
+        padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06);
+      }
+      .replay-header .modal-title { flex: 1; margin: 0; text-align: left; font-size: 1.05rem; }
+      .replay-back-top { flex-shrink: 0; min-width: 88px; }
+      .replay-back-bottom { width: 100%; margin-top: 12px; }
+      .replay-panel-scroll { max-height: min(55vh, 420px); overflow-y: auto; margin-bottom: 4px; }
+      .replay-sub { text-align: left; color: var(--color-textSecondary); font-size: 0.85rem; margin-bottom: 12px; line-height: 1.45; }
+      .replay-empty { text-align: center; color: var(--color-textSecondary); font-size: 0.88rem; margin: 16px 0; }
       .replay-stats { font-size: 0.78rem; color: var(--color-textSecondary); line-height: 1.5; margin-bottom: 10px; text-align: center; }
       .replay-canvas-wrap {
         background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1);
