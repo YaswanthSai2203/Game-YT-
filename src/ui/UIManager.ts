@@ -1,6 +1,8 @@
 import type { GameMode, GameSettings, RunStats } from '@/types';
 import { getColorBlindPalette } from '@/config/designTokens';
-import { MODE_CONFIG, SYNC, GAME, UPGRADES } from '@/config/constants';
+import { MODE_CONFIG, SYNC, GAME, UPGRADES, WEEKLY } from '@/config/constants';
+import { CORE_DEFS, TRAIL_DEFS, THEME_DEFS } from '@/config/cosmeticsConfig';
+import { analyzePlaystyle } from '@/utils/playstyleAnalysis';
 import { GRID_SYNC, GRID_SYNC_COMPLETE_COPY } from '@/config/sentientConfig';
 import { RUN_THEME_LORE, getLoreWhisperSuffix, type RunThemeId, type GridMood } from '@/config/directorConfig';
 import { LEADERBOARD } from '@/config/leaderboardConfig';
@@ -13,7 +15,7 @@ import { EventBus } from '@/core/EventBus';
 import { AudioManager } from '@/core/AudioManager';
 import type { UpgradeId } from '@/types';
 
-type ScreenId = 'loading' | 'splash' | 'menu' | 'hud' | 'pause' | 'gameover' | 'settings' | 'achievements' | 'leaderboard' | 'daily' | 'upgrades' | 'help' | 'toast';
+type ScreenId = 'loading' | 'splash' | 'menu' | 'hud' | 'pause' | 'gameover' | 'settings' | 'achievements' | 'leaderboard' | 'daily' | 'weekly' | 'loadout' | 'profile' | 'upgrades' | 'help' | 'toast';
 
 export class UIManager {
   private root: HTMLElement;
@@ -67,6 +69,7 @@ export class UIManager {
       else this.showTutorial();
     });
     this.events.on('ui:flash', (d) => this.flashScreen(d.color, d.duration));
+    this.events.on('ui:chromatic', (d) => this.chromaticPulse(d.intensity ?? 0.5, d.duration ?? 200));
     this.events.on('combo:break', (d) => {
       this.audio.playComboBreak();
       if (d.previousCombo >= 10) {
@@ -128,6 +131,9 @@ export class UIManager {
       case 'achievements': this.renderAchievements(); break;
       case 'leaderboard': void this.renderLeaderboard(); break;
       case 'daily': this.renderDaily(); break;
+      case 'weekly': this.renderWeekly(); break;
+      case 'loadout': this.renderLoadout(); break;
+      case 'profile': this.renderProfile(); break;
       case 'upgrades': this.renderUpgrades(); break;
       case 'help': this.renderHelp(); break;
     }
@@ -664,7 +670,10 @@ export class UIManager {
         <p class="menu-nav-label">Progress &amp; tools</p>
         <nav class="menu-nav" aria-label="Progress and tools">
           <button type="button" class="btn btn-secondary menu-nav-btn${canAffordUpgrade ? ' menu-nav-ready' : ''}" data-action="upgrades" aria-label="Upgrades — spend Data Credits" title="Spend Data Credits earned from runs">⚡ Upgrades <span class="credits-badge">${save.dataCredits}◈</span></button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="loadout" aria-label="Loadout — cores, trails, themes" title="Customize your pilot">🎨 Loadout</button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="profile" aria-label="Pilot profile and stats" title="Lifetime stats and playstyle">👤 Profile</button>
           <button type="button" class="btn btn-secondary menu-nav-btn${dailyReady ? ' menu-nav-ready' : ''}" data-action="daily" aria-label="Daily Challenge${dailyReady ? ' — bonus ready' : ''}" title="${dailyReady ? 'Daily bonus ready to claim' : 'Daily challenge and streak bonus'}">📅 Daily${dailyReady ? '<span class="nav-badge" aria-hidden="true">!</span>' : ''}</button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="weekly" aria-label="Weekly challenge" title="Community seeded weekly run">🌐 Weekly</button>
           <button type="button" class="btn btn-secondary menu-nav-btn" data-action="achievements" aria-label="Achievements" title="Track milestones and secrets">🏆 Achievements</button>
           <button type="button" class="btn btn-secondary menu-nav-btn" data-action="leaderboard" aria-label="Global leaderboard" title="Compare scores with all players">📊 Global Ranks</button>
           <button type="button" class="btn btn-secondary menu-nav-btn" data-action="settings" aria-label="Settings" title="Audio, controls, accessibility">⚙️ Settings</button>
@@ -728,6 +737,9 @@ export class UIManager {
         else if (action === 'achievements') this.showScreen('achievements');
         else if (action === 'leaderboard') this.showScreen('leaderboard');
         else if (action === 'daily') this.showScreen('daily');
+        else if (action === 'weekly') this.showScreen('weekly');
+        else if (action === 'loadout') this.showScreen('loadout');
+        else if (action === 'profile') this.showScreen('profile');
         else if (action === 'upgrades') this.showScreen('upgrades');
         else if (action === 'help') this.showScreen('help');
         else if (action === 'void') {
@@ -1229,6 +1241,136 @@ export class UIManager {
     });
   }
 
+  private chromaticPulse(intensity: number, duration: number): void {
+    if (this.save.settings.reducedMotion) return;
+    let el = this.root.querySelector('#ui-chromatic') as HTMLElement | null;
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'ui-chromatic';
+      this.root.appendChild(el);
+    }
+    el.style.setProperty('--chromatic-intensity', String(intensity));
+    el.classList.add('active');
+    setTimeout(() => el?.classList.remove('active'), duration);
+  }
+
+  private renderLoadout(): void {
+    const u = this.save.save.unlocks;
+    const renderOptions = (
+      type: 'core' | 'trail' | 'theme',
+      defs: { id: string; name: string }[],
+      selected: string,
+    ) => defs.map((d) => {
+      const owned = this.save.hasUnlock(type, d.id) || d.id === 'default';
+      const active = selected === d.id;
+      return `
+        <button type="button" class="loadout-item${active ? ' loadout-active' : ''}${!owned ? ' loadout-locked' : ''}"
+          data-cosmetic="${type}" data-id="${d.id}" ${!owned ? 'disabled' : ''}>
+          <span class="loadout-name">${d.name}</span>
+          ${active ? '<span class="loadout-badge">ACTIVE</span>' : ''}
+          ${!owned ? '<span class="loadout-lock">🔒</span>' : ''}
+        </button>`;
+    }).join('');
+
+    this.overlay.className = 'screen screen-loadout modal-overlay';
+    this.overlay.innerHTML = `
+      <div class="modal panel animate-in loadout-panel">
+        <h2 class="modal-title">PILOT LOADOUT</h2>
+        <p class="loadout-sub">Customize your core, trail, and world theme</p>
+        <section class="loadout-section">
+          <h3>Core</h3>
+          <div class="loadout-grid">${renderOptions('core', CORE_DEFS, u.selectedCore)}</div>
+        </section>
+        <section class="loadout-section">
+          <h3>Trail</h3>
+          <div class="loadout-grid">${renderOptions('trail', TRAIL_DEFS, u.selectedTrail)}</div>
+        </section>
+        <section class="loadout-section">
+          <h3>World Theme</h3>
+          <div class="loadout-grid">${renderOptions('theme', THEME_DEFS, u.selectedTheme)}</div>
+        </section>
+        <button type="button" class="btn btn-primary" data-action="back">← BACK</button>
+      </div>
+    `;
+
+    this.overlay.querySelectorAll('[data-cosmetic]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const type = (btn as HTMLElement).dataset.cosmetic as 'core' | 'trail' | 'theme';
+        const id = (btn as HTMLElement).dataset.id!;
+        if (this.save.setCosmetic(type, id)) {
+          this.audio.playMenuConfirm();
+          this.showToast(`${type} equipped`, 'milestone');
+          this.renderLoadout();
+        }
+      });
+    });
+    this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
+      this.audio.playMenuConfirm();
+      this.showScreen('menu');
+    });
+  }
+
+  private renderProfile(): void {
+    const save = this.save.save;
+    const ps = analyzePlaystyle(save.worldMemory, save.stats);
+    this.overlay.className = 'screen screen-profile modal-overlay';
+    this.overlay.innerHTML = `
+      <div class="modal panel animate-in profile-panel">
+        <h2 class="modal-title">PILOT PROFILE</h2>
+        <p class="profile-title">${ps.title}</p>
+        <div class="profile-grid">
+          <div class="profile-stat"><span>Total Runs</span><strong>${ps.totalRuns}</strong></div>
+          <div class="profile-stat"><span>Longest Run</span><strong>${formatTime(ps.longestRun)}</strong></div>
+          <div class="profile-stat"><span>Near Misses</span><strong>${ps.nearMisses}</strong></div>
+          <div class="profile-stat"><span>Realities Seen</span><strong>${ps.dimensionsCount}</strong></div>
+          <div class="profile-stat"><span>Myths Witnessed</span><strong>${ps.mythsCount}</strong></div>
+          <div class="profile-stat"><span>Ghost Echo PB</span><strong>${ps.ghostScore ? formatScore(ps.ghostScore) : '—'}</strong></div>
+        </div>
+        <div class="profile-playstyle">
+          <h3>Playstyle Analysis</h3>
+          <p><strong>Lane bias:</strong> ${ps.laneBiasLabel}</p>
+          <p><strong>Risk profile:</strong> ${ps.riskLabel}</p>
+          <p class="profile-tags">${ps.specialties.map((s) => `<span class="profile-tag">${s}</span>`).join('')}</p>
+        </div>
+        <button type="button" class="btn btn-primary" data-action="back">← BACK</button>
+      </div>
+    `;
+    this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
+      this.audio.playMenuConfirm();
+      this.showScreen('menu');
+    });
+  }
+
+  private renderWeekly(): void {
+    const weekly = this.save.save.weekly;
+    this.overlay.className = 'screen screen-weekly modal-overlay';
+    this.overlay.innerHTML = `
+      <div class="modal panel animate-in">
+        <h2 class="modal-title">WEEKLY SYNC</h2>
+        <p class="weekly-sub">Same seed for all pilots this week — community run</p>
+        <div class="daily-info">
+          <p>📅 Week: <strong>${weekly.weekId}</strong></p>
+          <p>🎯 Target: <strong>${formatScore(WEEKLY.TARGET_SCORE)}</strong></p>
+          <p>⭐ Your Best: <strong>${formatScore(weekly.bestScore)}</strong></p>
+          <p>🎁 Reward: <strong>${WEEKLY.BONUS_CREDITS}◈</strong> on first clear</p>
+          ${weekly.completed ? '<p class="daily-complete">✅ Weekly cleared!</p>' : ''}
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" data-action="start-weekly">▶ START WEEKLY</button>
+          <button class="btn btn-secondary" data-action="back">← BACK</button>
+        </div>
+      </div>
+    `;
+    this.overlay.querySelector('[data-action="start-weekly"]')?.addEventListener('click', () => {
+      this.audio.playMenuConfirm();
+      this.callbacks.onStartGame?.('weekly');
+    });
+    this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
+      this.audio.playMenuConfirm();
+      this.showScreen('menu');
+    });
+  }
+
   private renderDaily(): void {
     const daily = this.save.save.daily;
     this.overlay.className = 'screen screen-daily modal-overlay';
@@ -1303,6 +1445,49 @@ export class UIManager {
         transition: opacity 0.05s ease-out;
       }
       #ui-flash.active { opacity: 1; transition: opacity 0.15s ease-in; }
+
+      #ui-chromatic {
+        position: absolute; inset: 0; pointer-events: none; z-index: 19; opacity: 0;
+        mix-blend-mode: screen;
+        background: linear-gradient(90deg,
+          rgba(255,0,110,calc(0.15 * var(--chromatic-intensity, 0.5))) 0%,
+          transparent 40%, transparent 60%,
+          rgba(0,240,255,calc(0.15 * var(--chromatic-intensity, 0.5))) 100%);
+        transform: scale(1.02);
+        transition: opacity 0.08s ease-out;
+      }
+      #ui-chromatic.active { opacity: 1; animation: chromatic-shake 0.18s ease-out; }
+      @keyframes chromatic-shake {
+        0%, 100% { transform: translateX(0) scale(1.02); }
+        25% { transform: translateX(calc(-3px * var(--chromatic-intensity, 0.5))) scale(1.02); }
+        75% { transform: translateX(calc(3px * var(--chromatic-intensity, 0.5))) scale(1.02); }
+      }
+
+      .loadout-panel { max-width: 520px; max-height: 85vh; overflow-y: auto; }
+      .loadout-sub, .weekly-sub { color: var(--color-textSecondary); font-size: 0.9rem; margin-bottom: 1rem; }
+      .loadout-section { margin-bottom: 1.25rem; }
+      .loadout-section h3 { font-size: 0.75rem; letter-spacing: 0.12em; color: var(--color-neonCyan); margin-bottom: 0.5rem; }
+      .loadout-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+      .loadout-item {
+        flex: 1 1 140px; padding: 0.65rem 0.75rem; border-radius: 8px;
+        border: 1px solid rgba(0,240,255,0.2); background: rgba(0,240,255,0.05);
+        color: var(--color-textPrimary); cursor: pointer; text-align: left;
+        transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+      }
+      .loadout-item:hover:not(:disabled) { border-color: var(--color-neonCyan); transform: translateY(-1px); }
+      .loadout-active { border-color: var(--color-neonGold); box-shadow: 0 0 12px rgba(255,215,0,0.25); }
+      .loadout-locked { opacity: 0.45; cursor: not-allowed; }
+      .loadout-name { display: block; font-size: 0.85rem; }
+      .loadout-badge { font-size: 0.65rem; color: var(--color-neonGold); letter-spacing: 0.08em; }
+      .profile-panel { max-width: 480px; }
+      .profile-title { font-family: 'Orbitron', sans-serif; color: var(--color-neonViolet); margin-bottom: 1rem; }
+      .profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.25rem; }
+      .profile-stat { background: rgba(255,255,255,0.04); padding: 0.6rem; border-radius: 8px; }
+      .profile-stat span { display: block; font-size: 0.7rem; color: var(--color-textSecondary); }
+      .profile-stat strong { font-size: 1.1rem; color: var(--color-neonCyan); }
+      .profile-playstyle h3 { font-size: 0.8rem; color: var(--color-neonMagenta); margin-bottom: 0.5rem; }
+      .profile-tags { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+      .profile-tag { font-size: 0.7rem; padding: 0.25rem 0.5rem; border-radius: 999px; background: rgba(139,92,246,0.2); color: var(--color-neonViolet); }
 
       .countdown-overlay {
         position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;

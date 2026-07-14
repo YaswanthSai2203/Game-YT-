@@ -1,6 +1,6 @@
 import { Application } from 'pixi.js';
 import type { GameConfig, GameMode, RunStats } from '@/types';
-import { GAME } from '@/config/constants';
+import { GAME, WEEKLY } from '@/config/constants';
 import { EventBus } from '@/core/EventBus';
 import { SaveManager } from '@/core/SaveManager';
 import { AchievementManager } from '@/core/AchievementManager';
@@ -170,6 +170,10 @@ export class Game {
     if (mode === 'challenge') {
       config.seed = this.save.save.daily.todaySeed;
       config.targetScore = 5000;
+    }
+    if (mode === 'weekly') {
+      config.seed = this.save.save.weekly.seed;
+      config.targetScore = WEEKLY.TARGET_SCORE;
     }
 
     this.ui.showScreen('hud');

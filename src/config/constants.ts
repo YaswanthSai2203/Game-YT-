@@ -150,11 +150,17 @@ export const SYNC = {
   ],
 } as const;
 
+export const WEEKLY = {
+  TARGET_SCORE: 7500,
+  BONUS_CREDITS: 150,
+} as const;
+
 export const MODE_CONFIG: Record<GameMode, { label: string; description: string; timeLimit?: number; targetScore?: number }> = {
   endless: { label: 'ENDLESS', description: 'Survive as long as you can. No limits.' },
   timeAttack60: { label: 'TIME ATTACK', description: 'Maximum score in 60 seconds.', timeLimit: 60 },
   timeAttack120: { label: 'TIME ATTACK+', description: 'Maximum score in 120 seconds.', timeLimit: 120 },
-  challenge: { label: 'CHALLENGE', description: 'Daily seeded run. Beat the target score.', targetScore: 5000 },
+  challenge: { label: 'DAILY', description: 'Daily seeded run. Beat 5,000 points.', targetScore: 5000 },
+  weekly: { label: 'WEEKLY', description: 'Community seeded run. Beat 7,500 this week.', targetScore: WEEKLY.TARGET_SCORE },
   practice: { label: 'PRACTICE', description: 'No death. Train your reflexes.' },
 };
 

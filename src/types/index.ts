@@ -1,4 +1,4 @@
-export type GameMode = 'endless' | 'timeAttack60' | 'timeAttack120' | 'challenge' | 'practice';
+export type GameMode = 'endless' | 'timeAttack60' | 'timeAttack120' | 'challenge' | 'weekly' | 'practice';
 
 export type PowerupType = 'shield' | 'magnet' | 'overclock' | 'chronos';
 
@@ -241,6 +241,7 @@ export type EventMap = {
   'analytics:track': AnalyticsEvent;
   'ui:toast': { message: string; type?: string };
   'ui:flash': { color?: string; duration?: number };
+  'ui:chromatic': { intensity?: number; duration?: number };
   'ui:hype': { title: string; subtitle?: string; tier?: number; color?: 'cyan' | 'gold' | 'magenta' | 'violet' };
   'ui:tutorial': { step: number };
   'milestone:reach': { label: string };

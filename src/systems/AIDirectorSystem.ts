@@ -25,6 +25,7 @@ export interface DirectorSpawnMods {
   spawnIntervalMult: number;
   firewallWeight: number;
   shardWeight: number;
+  patternStyle?: 'mercy' | 'hunter' | 'training' | 'balanced';
 }
 
 export interface RunTelemetry {
@@ -146,10 +147,15 @@ export class AIDirectorSystem {
     const def = RUN_THEMES[this.theme];
     const moodFw = this.mood === 'aggressive' ? 1.12 : this.mood === 'respectful' ? 0.88 : 1;
     const moodSpawn = this.mood === 'aggressive' ? 0.92 : this.mood === 'respectful' ? 1.06 : 1;
+    const patternStyle = this.theme === 'mercy_protocol' ? 'mercy'
+      : this.theme === 'hunter' ? 'hunter'
+      : this.theme === 'first_contact' ? 'training'
+      : 'balanced';
     return {
       spawnIntervalMult: def.spawnMult * moodSpawn,
       firewallWeight: def.firewallMult * moodFw,
       shardWeight: def.shardMult,
+      patternStyle,
     };
   }
 
