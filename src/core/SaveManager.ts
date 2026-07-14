@@ -1,5 +1,5 @@
 import type { SaveData, GameSettings, RunStats, LeaderboardEntry, WorldMemory } from '@/types';
-import { STORAGE_KEY, GAME, LEADERBOARD_SIZE, SYNC, CREDITS } from '@/config/constants';
+import { STORAGE_KEY, GAME, LEADERBOARD_SIZE, SYNC, CREDITS, WEEKLY } from '@/config/constants';
 import { getTodayDateString, getWeekId, hashString } from '@/utils/math';
 import { GridSyncSystem } from '@/systems/GridSyncSystem';
 import { computePlayerTitle } from '@/config/directorConfig';
@@ -327,6 +327,22 @@ export class SaveManager {
     }
   }
 
+  hasUnlock(type: 'core' | 'trail' | 'theme', id: string): boolean {
+    if (id === 'default') return true;
+    const key = type === 'core' ? 'cores' : type === 'trail' ? 'trails' : 'themes';
+    return this.data.unlocks[key].includes(id);
+  }
+
+  setCosmetic(type: 'core' | 'trail' | 'theme', id: string): boolean {
+    if (!this.hasUnlock(type, id)) return false;
+    if (type === 'core') this.data.unlocks.selectedCore = id;
+    else if (type === 'trail') this.data.unlocks.selectedTrail = id;
+    else this.data.unlocks.selectedTheme = id;
+    this.persist();
+    return true;
+  }
+
+
   hasSeenPickup(pickupId: string): boolean {
     return this.data.worldMemory.seenPickups.includes(pickupId);
   }
@@ -380,6 +396,9 @@ export class SaveManager {
     if (stats.score > this.data.daily.todayBest) {
       this.data.daily.todayBest = stats.score;
     }
+    if (stats.mode === 'challenge' && stats.score >= 5000) {
+      this.data.daily.completedToday = true;
+    }
 
     const weekId = getWeekId();
     if (this.data.weekly.weekId !== weekId) {
@@ -387,6 +406,10 @@ export class SaveManager {
     }
     if (stats.score > this.data.weekly.bestScore) {
       this.data.weekly.bestScore = stats.score;
+    }
+    if (stats.mode === 'weekly' && stats.score >= 7500 && !this.data.weekly.completed) {
+      this.data.weekly.completed = true;
+      this.data.dataCredits += WEEKLY.BONUS_CREDITS;
     }
 
     const creditsEarned = stats.creditsEarned ?? stats.shards * CREDITS.PER_SHARD;

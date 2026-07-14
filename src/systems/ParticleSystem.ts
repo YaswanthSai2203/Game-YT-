@@ -1,6 +1,7 @@
 import { Container, Graphics } from 'pixi.js';
 import { ObjectPool } from '@/utils/ObjectPool';
 import { randomRange } from '@/utils/math';
+import type { TrailDef } from '@/config/cosmeticsConfig';
 
 interface Particle {
   graphic: Graphics;
@@ -16,6 +17,8 @@ export class ParticleSystem {
   private pool: ObjectPool<Particle>;
   private activeList: Particle[] = [];
   private reducedMotion: boolean;
+  private trailStyle: TrailDef['style'] = 'default';
+  private trailTick = 0;
 
   constructor(parent: Container, reducedMotion = false) {
     this.container = new Container();
@@ -32,12 +35,16 @@ export class ParticleSystem {
         p.graphic.clear();
         p.graphic.visible = false;
       },
-      64,
+      96,
     );
   }
 
   setReducedMotion(value: boolean): void {
     this.reducedMotion = value;
+  }
+
+  setTrailStyle(style: TrailDef['style']): void {
+    this.trailStyle = style;
   }
 
   burst(x: number, y: number, color: number, count = 12, speed = 200): void {
@@ -63,6 +70,8 @@ export class ParticleSystem {
       p.graphic.y = y;
       p.graphic.visible = true;
       p.graphic.alpha = 1;
+      p.graphic.rotation = 0;
+      p.graphic.scale.set(1);
 
       if (!p.graphic.parent) {
         this.container.addChild(p.graphic);
@@ -73,21 +82,67 @@ export class ParticleSystem {
     }
   }
 
-  trail(x: number, y: number, color: number): void {
+  /** Radial impact ring for hits, vaults, combos */
+  impactRing(x: number, y: number, color: number, radius = 40): void {
     if (this.reducedMotion) return;
     const p = this.pool.acquire();
-    p.vx = randomRange(-10, 10);
-    p.vy = randomRange(20, 40);
-    p.life = 0.4;
-    p.maxLife = 0.4;
+    p.vx = 0;
+    p.vy = 0;
+    p.life = 0.35;
+    p.maxLife = 0.35;
     p.active = true;
     p.graphic.clear();
-    p.graphic.circle(0, 0, 3);
-    p.graphic.fill({ color, alpha: 0.6 });
+    p.graphic.circle(0, 0, radius);
+    p.graphic.stroke({ color, width: 2, alpha: 0.7 });
     p.graphic.x = x;
     p.graphic.y = y;
     p.graphic.visible = true;
-    p.graphic.alpha = 0.6;
+    p.graphic.alpha = 0.8;
+    p.graphic.scale.set(0.3);
+    if (!p.graphic.parent) this.container.addChild(p.graphic);
+    if (!this.activeList.includes(p)) this.activeList.push(p);
+  }
+
+  trail(x: number, y: number, color: number): void {
+    if (this.reducedMotion) return;
+    this.trailTick++;
+    const skip = this.trailStyle === 'glitch' ? 1 : 2;
+    if (this.trailTick % skip !== 0) return;
+
+    const p = this.pool.acquire();
+    p.active = true;
+    p.graphic.clear();
+    p.graphic.x = x + randomRange(-4, 4);
+    p.graphic.y = y + randomRange(-2, 2);
+
+    if (this.trailStyle === 'gold') {
+      p.vx = randomRange(-8, 8);
+      p.vy = randomRange(25, 50);
+      p.life = 0.55;
+      p.maxLife = 0.55;
+      p.graphic.star(0, 0, 4, 4, 2);
+      p.graphic.fill({ color: 0xffd700, alpha: 0.75 });
+      p.graphic.alpha = 0.75;
+    } else if (this.trailStyle === 'glitch') {
+      p.vx = randomRange(-30, 30);
+      p.vy = randomRange(10, 35);
+      p.life = 0.25;
+      p.maxLife = 0.25;
+      const w = randomRange(2, 8);
+      p.graphic.rect(-w / 2, -1, w, 2);
+      p.graphic.fill({ color: Math.random() > 0.5 ? color : 0xff006e, alpha: 0.85 });
+      p.graphic.alpha = 0.85;
+    } else {
+      p.vx = randomRange(-10, 10);
+      p.vy = randomRange(20, 40);
+      p.life = 0.4;
+      p.maxLife = 0.4;
+      p.graphic.circle(0, 0, 3);
+      p.graphic.fill({ color, alpha: 0.6 });
+      p.graphic.alpha = 0.6;
+    }
+
+    p.graphic.visible = true;
     if (!p.graphic.parent) this.container.addChild(p.graphic);
     if (!this.activeList.includes(p)) this.activeList.push(p);
   }
@@ -100,8 +155,14 @@ export class ParticleSystem {
       p.life -= dt;
       p.graphic.x += p.vx * dt;
       p.graphic.y += p.vy * dt;
-      p.graphic.alpha = (p.life / p.maxLife) * 0.8;
-      p.vy += 100 * dt;
+      const ratio = p.life / p.maxLife;
+      p.graphic.alpha = ratio * 0.85;
+
+      if (p.vx === 0 && p.vy === 0 && p.maxLife <= 0.4) {
+        p.graphic.scale.set(lerpScale(p.graphic.scale.x, 1.8, dt * 4));
+      } else {
+        p.vy += 100 * dt;
+      }
 
       if (p.life <= 0) {
         this.container.removeChild(p.graphic);
@@ -114,4 +175,8 @@ export class ParticleSystem {
   clear(): void {
     this.container.removeChildren();
   }
+}
+
+function lerpScale(current: number, target: number, t: number): number {
+  return current + (target - current) * Math.min(1, t);
 }

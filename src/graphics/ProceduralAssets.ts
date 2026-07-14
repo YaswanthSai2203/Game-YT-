@@ -44,6 +44,8 @@ export function createPlayerCore(radius: number, color: number, coreId?: string)
 
   if (isGridBound) {
     container.label = 'grid-bound-core';
+  } else if (coreId === 'quantum') {
+    container.label = 'quantum-core';
   }
 
   return container;

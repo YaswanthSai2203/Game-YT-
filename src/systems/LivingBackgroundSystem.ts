@@ -15,6 +15,8 @@ import {
   getBiomeLabel,
   type LivingBackgroundOptions,
 } from '@/graphics/LivingBackground';
+import { createWeatherOverlay } from '@/graphics/ProceduralAssets';
+import type { WeatherType } from '@/config/directorConfig';
 import { clamp, lerp } from '@/utils/math';
 
 export interface LivingBackgroundState {
@@ -50,6 +52,7 @@ export class LivingBackgroundSystem {
   private totalRuns: number;
   private seed: number;
   private reducedMotion: boolean;
+  private directorWeather: WeatherType = 'clear';
 
   private pulsePhase = 0;
   private envEventTimer = 0;
@@ -68,7 +71,7 @@ export class LivingBackgroundSystem {
     parent: Container,
     width: number,
     height: number,
-    options: LivingBackgroundOptions & { onBiomeChange?: (label: string) => void },
+    options: LivingBackgroundOptions & { onBiomeChange?: (label: string) => void; directorWeather?: WeatherType },
   ) {
     this.parent = parent;
     this.width = width;
@@ -79,12 +82,19 @@ export class LivingBackgroundSystem {
     this.seed = options.seed;
     this.reducedMotion = options.reducedMotion;
     this.onBiomeChange = options.onBiomeChange ?? null;
+    this.directorWeather = options.directorWeather ?? 'clear';
 
     this.container = this.buildContainer(options.biome);
     parent.addChildAt(this.container, 0);
+    this.applyDirectorWeather();
 
     this.envEventIndex = Math.floor(Math.random() * ENV_EVENT_CYCLE.length);
     this.currentEnvEvent = ENV_EVENT_CYCLE[this.envEventIndex] ?? 'nebula';
+  }
+
+  setDirectorWeather(weather: WeatherType): void {
+    this.directorWeather = weather;
+    this.applyDirectorWeather();
   }
 
   getBiome(): BackgroundBiomeId {
@@ -93,6 +103,16 @@ export class LivingBackgroundSystem {
 
   getContainer(): Container {
     return this.container;
+  }
+
+  private applyDirectorWeather(): void {
+    if (this.directorWeather === 'clear') return;
+    const weatherLayer = this.container.children.find((c) => c.label === 'weather');
+    if (!weatherLayer) return;
+    weatherLayer.removeChildren();
+    const overlay = createWeatherOverlay(this.width, this.height, this.directorWeather);
+    overlay.alpha = 0.7;
+    weatherLayer.addChild(overlay);
   }
 
   setFractureActive(active: boolean, intensity = 0.5): void {
@@ -268,6 +288,7 @@ export class LivingBackgroundSystem {
     this.biome = biome;
     this.container = this.buildContainer(biome);
     this.parent.addChildAt(this.container, idx);
+    this.applyDirectorWeather();
     this.pendingContainer = null;
     this.swapFade = 1;
   }
@@ -283,6 +304,7 @@ export class LivingBackgroundSystem {
       this.container = this.pendingContainer;
       this.pendingContainer = null;
       this.container.alpha = 1;
+      this.applyDirectorWeather();
       old.destroy({ children: true });
     }
   }

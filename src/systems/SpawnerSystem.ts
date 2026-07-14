@@ -30,7 +30,8 @@ export class SpawnerSystem {
   private scrollSpeed: number;
   private speedRatio = 0;
   private modifiers: RealityModifiers | null = null;
-  private directorMods: { spawnIntervalMult?: number; firewallWeight?: number; shardWeight?: number } | null = null;
+  private directorMods: { spawnIntervalMult?: number; firewallWeight?: number; shardWeight?: number; patternStyle?: string } | null = null;
+  private mercyPulse = false;
   private titanTimer = 0;
   private assistShardsPending = 0;
 
@@ -43,8 +44,12 @@ export class SpawnerSystem {
     this.modifiers = mods;
   }
 
-  setDirectorModifiers(mods: { spawnIntervalMult?: number; firewallWeight?: number; shardWeight?: number } | null): void {
+  setDirectorModifiers(mods: { spawnIntervalMult?: number; firewallWeight?: number; shardWeight?: number; patternStyle?: string } | null): void {
     this.directorMods = mods;
+  }
+
+  setMercyPulse(active: boolean): void {
+    this.mercyPulse = active;
   }
 
   queueAssistShard(): void {
@@ -98,7 +103,9 @@ export class SpawnerSystem {
 
     this.entities = this.entities.filter((e) => e.active);
 
-    const intervalMult = (this.modifiers?.spawnIntervalMult ?? 1) * (this.directorMods?.spawnIntervalMult ?? 1);
+    const intervalMult = (this.modifiers?.spawnIntervalMult ?? 1)
+      * (this.directorMods?.spawnIntervalMult ?? 1)
+      * (this.mercyPulse ? 1.45 : 1);
     const interval = lerp(
       DIFFICULTY.SPAWN_INTERVAL_BASE,
       DIFFICULTY.SPAWN_INTERVAL_MIN,
@@ -150,6 +157,20 @@ export class SpawnerSystem {
 
     const fwWeight = (this.modifiers?.firewallWeight ?? 1) * (this.directorMods?.firewallWeight ?? 1);
     const patternLevel = DIFFICULTY.PATTERN_UNLOCK_TIME.filter((t) => this.elapsed >= t).length;
+    const style = this.directorMods?.patternStyle ?? 'balanced';
+
+    if (style === 'mercy' || fwWeight < 0.7) {
+      if (this.rng() < 0.55) {
+        this.spawnEntity('shard', randomInt(0, 2));
+        if (this.rng() < 0.45) this.spawnEntity('shard', randomInt(0, 2));
+        return;
+      }
+    }
+
+    if (style === 'training' && this.elapsed < 35) {
+      this.spawnWarmupPattern();
+      return;
+    }
 
     if (fwWeight < 0.7 && this.rng() < 0.45) {
       this.spawnEntity('shard', randomInt(0, 2));
@@ -173,10 +194,12 @@ export class SpawnerSystem {
         this.spawnEntity('shard', randomInt(0, 2));
         break;
       case 3:
-        this.spawnTriplePattern();
+        if (style === 'hunter') this.spawnGapPattern();
+        else this.spawnTriplePattern();
         break;
       case 4:
-        this.spawnGapPattern();
+        if (style === 'hunter') this.spawnExpertPattern();
+        else this.spawnGapPattern();
         break;
       default:
         this.spawnExpertPattern();
@@ -344,5 +367,6 @@ export class SpawnerSystem {
     this.directorMods = null;
     this.titanTimer = 8;
     this.assistShardsPending = 0;
+    this.mercyPulse = false;
   }
 }

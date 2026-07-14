@@ -22,6 +22,7 @@ import {
 } from '@/graphics/ProceduralAssets';
 import { LivingBackgroundSystem } from '@/systems/LivingBackgroundSystem';
 import { RUN_EVOLUTION, pickBiomeFromSeed } from '@/config/backgroundConfig';
+import { getThemeBiome, getTrailStyle } from '@/config/cosmeticsConfig';
 import { QuantumRealitySystem } from '@/systems/QuantumRealitySystem';
 import { SentientAISystem } from '@/systems/SentientAISystem';
 import { MythEventSystem } from '@/systems/MythEventSystem';
@@ -113,6 +114,8 @@ export class GameScene extends BaseScene {
   private currentAudioLayer: 'heartbeat' | 'choir' | 'piano' | 'none' = 'none';
   private firstMoveLogged = false;
   private lastRunFirstMove: number | null = null;
+  private mercyPulseTimer = 0;
+  private quantumCorePhase = 0;
 
   private unsubscribers: (() => void)[] = [];
 
@@ -184,6 +187,12 @@ export class GameScene extends BaseScene {
         this.slowMoTimer = d.duration;
         this.slowMoScale = d.scale;
       }),
+      this.events.on('director:mercy_pulse', () => {
+        this.mercyPulseTimer = 14;
+        this.spawner?.setMercyPulse(true);
+        this.events.emit('ui:toast', { message: 'Mercy Protocol — the Grid eases off', type: 'info' });
+        this.events.emit('ui:flash', { color: 'rgba(0,255,136,0.2)', duration: 400 });
+      }),
       this.events.on('audio:mood', (d) => this.audio.setGridMood(d.mood)),
     );
   }
@@ -234,12 +243,14 @@ export class GameScene extends BaseScene {
     this.audio.setGridMood(this.runPlan.mood);
 
     const bgSeed = this.config.seed ?? this.runPlan.theme.length * 9973 + this.save.save.stats.totalRuns;
-    const startBiome = pickBiomeFromSeed(bgSeed, this.runPlan.theme);
+    const cosmeticBiome = getThemeBiome(this.save.save.unlocks.selectedTheme);
+    const startBiome = cosmeticBiome ?? pickBiomeFromSeed(bgSeed, this.runPlan.theme);
     this.livingBg = new LivingBackgroundSystem(this.container, this.gameWidth, this.gameHeight, {
       biome: startBiome,
       totalRuns: this.save.save.stats.totalRuns,
       seed: bgSeed,
       reducedMotion: this.save.settings.reducedMotion,
+      directorWeather: this.runPlan.weather,
       onBiomeChange: (label) => {
         this.events.emit('ui:toast', {
           message: `Dimension shift — ${label}`,
@@ -248,20 +259,17 @@ export class GameScene extends BaseScene {
       },
     });
 
-    this.ghostReplay = new GhostReplaySystem();
-    this.ghostReplay.startRecording(this.config.mode);
-    if (this.runPlan.useGhostReplay && this.save.save.worldMemory.ghostReplay) {
-      this.ghostReplay.loadPlayback(this.save.save.worldMemory.ghostReplay, this.container);
-    }
-
     this.particles = new ParticleSystem(
       this.container,
       this.save.settings.reducedMotion,
     );
+    this.particles.setTrailStyle(getTrailStyle(this.save.save.unlocks.selectedTrail));
     this.floatingText = new FloatingTextSystem(this.container);
 
     const seed = this.config.seed
-      ?? (this.config.mode === 'challenge' ? this.save.save.daily.todaySeed : undefined);
+      ?? (this.config.mode === 'challenge' ? this.save.save.daily.todaySeed
+        : this.config.mode === 'weekly' ? this.save.save.weekly.seed
+        : undefined);
     this.spawner = new SpawnerSystem(seed);
     this.spawner.spawnStarter();
     this.combo = new ComboSystem(this.events);
@@ -335,6 +343,8 @@ export class GameScene extends BaseScene {
     this.ghostContainer = null;
     this.ghostBonusTimer = 0;
 
+    this.mercyPulseTimer = 0;
+    this.quantumCorePhase = 0;
     this.firstMoveLogged = false;
     this.currentAudioLayer = 'none';
 
@@ -441,6 +451,10 @@ export class GameScene extends BaseScene {
     this.particles.update(dt);
     this.floatingText.update(dt);
     this.updatePowerups(dt);
+    if (this.mercyPulseTimer > 0) {
+      this.mercyPulseTimer -= dt;
+      if (this.mercyPulseTimer <= 0) this.spawner.setMercyPulse(false);
+    }
     this.updateScoreBoost(dt);
     this.updatePhase(dt);
     this.syncEntities();
@@ -561,6 +575,7 @@ export class GameScene extends BaseScene {
     this.livingBg?.setTheme(theme);
     this.livingBg?.setFractureActive(true, 0.85);
     this.watcher?.setFractureHidden(true);
+    this.events.emit('ui:chromatic', { intensity: 0.7, duration: 350 });
     if (this.save.settings.reducedMotion) return;
     this.shakeAmount = Math.max(this.shakeAmount, 10);
     this.audio.playFracture();
@@ -629,6 +644,10 @@ export class GameScene extends BaseScene {
   }
 
   private updatePlayerVisuals(): void {
+    this.quantumCorePhase += 0.016;
+    const coreId = this.save.save.unlocks.selectedCore;
+    const isQuantum = coreId === 'quantum';
+
     const chronos = this.activePowerups.some((p) => p.type === 'chronos');
     const overclock = this.activePowerups.some((p) => p.type === 'overclock');
     if (this.phaseActive) {
@@ -637,6 +656,9 @@ export class GameScene extends BaseScene {
     } else if (this.hasShield) {
       this.playerContainer.alpha = 1;
       this.playerContainer.tint = COLORS.green;
+      if (!this.save.settings.reducedMotion && Math.sin(this.timeAlive * 8) > 0.85) {
+        this.particles.impactRing(this.playerX, this.playerY, COLORS.cyan, 28);
+      }
     } else if (overclock) {
       this.playerContainer.tint = COLORS.gold;
     } else if (chronos) {
@@ -644,6 +666,11 @@ export class GameScene extends BaseScene {
     } else {
       this.playerContainer.alpha = 1;
       this.playerContainer.tint = 0xffffff;
+    }
+
+    if (isQuantum && !this.save.settings.reducedMotion) {
+      const pulse = 1 + Math.sin(this.quantumCorePhase * 6) * 0.08;
+      this.playerContainer.scale.set(this.playerScale * pulse);
     }
   }
 
@@ -854,6 +881,8 @@ export class GameScene extends BaseScene {
         this.events.emit('ui:hype', { title: 'EDGE RUNNER!', subtitle: `+${SCORING.NEAR_MISS_BONUS} near miss`, tier: 2, color: 'gold' });
         this.shakeAmount = Math.max(this.shakeAmount, 5);
         this.particles.burst(this.playerX, this.playerY - 20, COLORS.gold, 12, 180);
+        this.particles.impactRing(this.playerX, this.playerY - 20, COLORS.gold, 35);
+        this.events.emit('ui:chromatic', { intensity: 0.4, duration: 180 });
       } else {
         this.nearMissChecked.add(entity.id);
         this.save.recordFirewallDodged();
@@ -944,6 +973,9 @@ export class GameScene extends BaseScene {
     this.addScore(points, this.laneCenters[this.playerLane], this.playerY - 30);
     this.reality.onShardCollect(this.combo.getCombo());
     this.audio.playShardCollect(this.combo.getCombo());
+    if (this.combo.getCombo() >= 5) {
+      this.particles.impactRing(this.laneCenters[this.playerLane], this.playerY - 20, COLORS.cyan, 20 + this.combo.getCombo());
+    }
     if (this.reality.isGhostRivalActive()) {
       this.ghostBonusTimer++;
     }
