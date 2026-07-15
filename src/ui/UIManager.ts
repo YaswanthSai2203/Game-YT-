@@ -39,6 +39,7 @@ export class UIManager {
   private replayReturnTo: 'menu' | 'profile' = 'menu';
   private replayEscapeHandler: ((e: KeyboardEvent) => void) | null = null;
   private investigationFocusId: string | null = null;
+  private lastScorePunchAt = 0;
   private callbacks: {
     onStartGame?: (mode: GameMode) => void;
     onResume?: () => void;
@@ -95,12 +96,12 @@ export class UIManager {
       if (d.previousCombo >= 10) {
         this.showHypeCallout({ title: 'SYNC LOST', subtitle: `Combo was ×${d.previousCombo}`, tier: 1, color: 'magenta' });
       } else if (d.previousCombo >= 5) {
-        this.showToast(`COMBO LOST — was ×${d.previousCombo}`, 'combo');
+        /* Combo loss shown via hype callout at ×10+ only — no top toast mid-run */
       }
     });
     this.events.on('ui:hype', (d) => this.showHypeCallout(d));
     this.events.on('score:change', (d) => {
-      if (d.delta >= 50) this.punchScore(d.delta);
+      if (d.delta >= 150) this.punchScore(d.delta);
     });
     this.events.on('reality:fracture', (d) => this.showFracturePortal(d));
     this.events.on('reality:rare', (d) => this.showRarePortal(d));
@@ -112,7 +113,7 @@ export class UIManager {
     this.events.on('grid:sync_complete', () => { /* handled at game over */ });
     this.events.on('director:run_start', (d) => this.showRunTheme(d.label, d.subtitle, d.mood, d.theme as RunThemeId));
     this.events.on('director:mercy_pulse', () => {
-      if (Math.random() < 0.5) this.showToast('The Grid eases pressure… briefly.', 'info');
+      /* Visual feedback only — flash handled in GameScene */
     });
 
     this.events.on('settings:change', () => this.applyTheme());
@@ -401,11 +402,13 @@ export class UIManager {
   private punchScore(delta: number): void {
     const scoreEl = this.overlay.querySelector('#hud-score');
     if (!scoreEl) return;
+    const now = performance.now();
+    if (now - this.lastScorePunchAt < 400) return;
+    this.lastScorePunchAt = now;
     scoreEl.classList.remove('score-punch');
     void (scoreEl as HTMLElement).offsetWidth;
-    scoreEl.classList.add('score-punch');
-    if (delta >= 200) {
-      this.showToast(`+${formatScore(delta)}`, 'bonus');
+    if (delta >= 250) {
+      scoreEl.classList.add('score-punch');
     }
   }
 
@@ -574,8 +577,18 @@ export class UIManager {
     this.overlay.className = '';
   }
 
+  private isInActiveRun(): boolean {
+    return this.overlay.classList.contains('screen-hud');
+  }
+
+  /** Top banners — suppressed during HUD except achievements and one-shot tutorials. */
   private showToast(message: string, type = 'info'): void {
-    const maxToasts = 5;
+    const bypass = type === 'achievement' || type === 'tutorial';
+    if (this.isInActiveRun() && !bypass) {
+      return;
+    }
+
+    const maxToasts = this.isInActiveRun() ? 2 : 5;
     while (this.toastStack.children.length >= maxToasts) {
       this.toastStack.firstElementChild?.remove();
     }
