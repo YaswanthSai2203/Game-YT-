@@ -211,7 +211,7 @@ export class Game {
   private handleGameOver(stats: RunStats, syncCompleted = false): void {
     this.input.setEnabled(false);
     this.setCanvasVisible(false);
-    const { newHighScore, xpGained, creditsEarned, syncUnlocks } = this.save.recordRun(stats);
+    const { newHighScore, xpGained, creditsEarned, syncUnlocks, signalFragments } = this.save.recordRun(stats);
     if (stats.shards > 0) this.ui.contributeToMilestone(stats.shards);
     const mem = this.save.save.worldMemory;
 
@@ -222,6 +222,7 @@ export class Game {
         xpGained,
         creditsEarned,
         syncUnlocks,
+        signalFragments,
         globalRank,
         globalTotal,
         creditsToNext: this.upgrades.getCreditsToNextUpgrade(),
