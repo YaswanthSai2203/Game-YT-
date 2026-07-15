@@ -197,7 +197,6 @@ export class GameScene extends BaseScene {
       this.events.on('director:mercy_pulse', () => {
         this.mercyPulseTimer = 14;
         this.spawner?.setMercyPulse(true);
-        this.events.emit('ui:toast', { message: 'Mercy Protocol — the Grid eases off', type: 'info' });
         this.events.emit('ui:flash', { color: 'rgba(0,255,136,0.2)', duration: 400 });
       }),
       this.events.on('audio:mood', (d) => this.audio.setGridMood(d.mood)),
@@ -456,8 +455,8 @@ export class GameScene extends BaseScene {
     this.ghostReplay.setLaneCenters(this.laneCenters, this.playerY);
     this.ghostReplay.record(this.timeAlive, this.playerLane);
     const ghostStatus = this.ghostReplay.update(scaledDt, this.timeAlive);
-    if (ghostStatus.ahead && this.timeAlive > 30 && Math.random() < dt * 0.008) {
-      this.events.emit('ui:toast', { message: 'Your echo falls behind.', type: 'info' });
+    if (ghostStatus.ahead && this.timeAlive > 30 && Math.random() < dt * 0.002) {
+      /* Ghost race feedback stays subtle — no top toast spam */
     }
     this.myth.update(dt, this.timeAlive);
     this.sentient.onComboHigh(this.combo.getCombo());
@@ -879,7 +878,7 @@ export class GameScene extends BaseScene {
       const message = entity.type === 'bomb'
         ? 'Data trap! Avoid it — −100 points'
         : 'Gold star — double points for 10 seconds!';
-      this.events.emit('ui:toast', { message, type: 'info' });
+      this.events.emit('ui:toast', { message, type: 'tutorial' });
     }
   }
 
@@ -1094,7 +1093,6 @@ export class GameScene extends BaseScene {
       tier: 3,
       color: 'gold',
     });
-    this.events.emit('ui:toast', { message: 'Score multiplier active!', type: 'milestone' });
   }
 
   private collectBomb(entityId: number): void {
