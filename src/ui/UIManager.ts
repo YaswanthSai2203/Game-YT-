@@ -25,6 +25,7 @@ type ScreenId = 'loading' | 'splash' | 'menu' | 'hud' | 'pause' | 'gameover' | '
 export class UIManager {
   private root: HTMLElement;
   private overlay: HTMLElement;
+  private toastStack: HTMLElement;
   private events: EventBus;
   private save: SaveManager;
   private achievements: AchievementManager;
@@ -64,6 +65,13 @@ export class UIManager {
     this.overlay = document.createElement('div');
     this.overlay.id = 'ui-overlay';
     this.root.appendChild(this.overlay);
+
+    this.toastStack = document.createElement('div');
+    this.toastStack.id = 'toast-stack';
+    this.toastStack.className = 'toast-stack';
+    this.toastStack.setAttribute('aria-live', 'polite');
+    this.root.appendChild(this.toastStack);
+
     this.applyTheme();
     this.injectStyles();
 
@@ -167,7 +175,9 @@ export class UIManager {
         <h2 class="modal-title">DAILY SYNC BONUS</h2>
         <p class="daily-bonus-amount">+${bonusPreview} DATA CREDITS</p>
         <p class="daily-bonus-streak">🔥 ${Math.max(streak, 1)} day streak</p>
-        <button class="btn btn-primary" data-action="claim">CLAIM</button>
+        <div class="modal-actions">
+          <button class="btn btn-primary" data-action="claim">CLAIM</button>
+        </div>
       </div>
     `;
     this.overlay.appendChild(modal);
@@ -561,16 +571,21 @@ export class UIManager {
   }
 
   private showToast(message: string, type = 'info'): void {
+    const maxToasts = 5;
+    while (this.toastStack.children.length >= maxToasts) {
+      this.toastStack.firstElementChild?.remove();
+    }
+
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.textContent = message;
-    toast.setAttribute('role', 'alert');
-    this.root.appendChild(toast);
+    toast.setAttribute('role', 'status');
+    this.toastStack.appendChild(toast);
     requestAnimationFrame(() => toast.classList.add('visible'));
     setTimeout(() => {
       toast.classList.remove('visible');
       setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    }, 3200);
   }
 
   private renderLoading(): void {
@@ -656,16 +671,17 @@ export class UIManager {
     this.overlay.innerHTML = `
       ${gridSync >= GRID_SYNC.THRESHOLDS.GLITCHES ? '<div class="menu-cracks"></div>' : ''}
       ${gridSync >= GRID_SYNC.THRESHOLDS.WATCHER && !save.worldMemory.watcherDefeated ? '<div class="menu-watcher" aria-hidden="true"></div>' : ''}
-      <div class="season-banner animate-in">
-        <span class="season-label">🌍 ${season.name}</span>
-        <span class="season-sub">${season.subtitle}</span>
-      </div>
-      <div id="community-milestone" class="community-milestone animate-in">
-        <div class="milestone-label">Community Shard Sync</div>
-        <div class="milestone-bar"><div id="milestone-fill" class="milestone-fill" style="width:0%"></div></div>
-        <div id="milestone-text" class="milestone-text">Loading global progress…</div>
-      </div>
-      <div class="menu-content animate-in ${corruptClass}">
+      <div class="menu-shell">
+        <div class="season-banner animate-in">
+          <span class="season-label">🌍 ${season.name}</span>
+          <span class="season-sub">${season.subtitle}</span>
+        </div>
+        <div id="community-milestone" class="community-milestone animate-in">
+          <div class="milestone-label">Community Shard Sync</div>
+          <div class="milestone-bar"><div id="milestone-fill" class="milestone-fill" style="width:0%"></div></div>
+          <div id="milestone-text" class="milestone-text">Loading global progress…</div>
+        </div>
+        <div class="menu-content animate-in ${corruptClass}">
         <header class="menu-header">
           <h1 class="menu-title">${title}</h1>
           <p class="menu-subtitle">${subtitle}</p>
@@ -713,6 +729,7 @@ export class UIManager {
           <div class="progress-bar"><div class="progress-fill" style="width:${xpProgress}%"></div></div>
           <span class="sync-xp">${save.profile.syncXP} XP</span>
         </div>
+        </div>
       </div>
     `;
 
@@ -742,21 +759,21 @@ export class UIManager {
     if (runs <= 1) {
       setTimeout(() => {
         this.showToast('New here? Try Practice mode — no death, same mechanics', 'info');
-      }, 700);
+      }, 1200);
     } else if (runs <= 3 && this.save.save.dataCredits >= 40 && !canAffordUpgrade) {
       setTimeout(() => {
         this.showToast('Almost enough for an upgrade — keep collecting shards!', 'info');
-      }, 700);
+      }, 1200);
     }
     if (dailyReady && runs > 0) {
       setTimeout(() => {
         this.showToast('Daily bonus ready — tap 📅 Daily', 'milestone');
-      }, runs <= 1 ? 2200 : 900);
+      }, runs <= 1 ? 3800 : 2400);
     }
     if (canAffordUpgrade) {
       setTimeout(() => {
         this.showToast('You can afford an upgrade — tap ⚡ Upgrades', 'milestone');
-      }, runs <= 1 ? 3400 : 1200);
+      }, runs <= 1 ? 5200 : 3600);
     }
   }
 
@@ -1622,14 +1639,25 @@ export class UIManager {
         font-size: calc(16px * var(--font-scale));
       }
 
-      .screen { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+      .screen { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
       .screen-menu {
+        flex-direction: column;
         overflow-y: auto; overflow-x: hidden;
-        align-items: flex-start;
-        justify-content: center;
-        padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+        align-items: center;
+        justify-content: flex-start;
+        padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
         -webkit-overflow-scrolling: touch;
         background: rgba(10, 14, 26, 0.97);
+      }
+      .menu-shell {
+        width: 100%;
+        max-width: 520px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        position: relative;
+        z-index: 2;
       }
       .screen-hud { pointer-events: none; flex-direction: column; justify-content: space-between; padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
       .screen-hud .hud-top,
@@ -1945,16 +1973,21 @@ export class UIManager {
 
       /* Menu */
       .menu-content {
-        width: 100%; max-width: 520px; padding: 16px 20px 24px;
-        text-align: center; margin: auto; position: relative; z-index: 2;
+        width: 100%; padding: 16px 16px 20px;
+        text-align: center; position: relative;
+        box-sizing: border-box;
       }
       .menu-header { margin-bottom: 16px; }
       .menu-title { font-family: 'Orbitron', sans-serif; font-size: clamp(1.6rem, 5vw, 2.2rem); font-weight: 900; color: var(--color-neonCyan); text-shadow: 0 0 20px rgba(0,240,255,0.4); line-height: 1.1; }
       .menu-subtitle { font-family: 'Orbitron', sans-serif; letter-spacing: 0.35em; font-size: 0.7rem; color: var(--color-textSecondary); margin-top: 8px; }
 
       .mode-grid {
-        display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+        display: grid; grid-template-columns: 1fr;
         gap: 10px; margin-bottom: 16px; width: 100%;
+      }
+      @media (min-width: 420px) {
+        .mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .mode-card:nth-child(5) { grid-column: 1 / -1; }
       }
       .mode-card {
         background: rgba(18,24,41,0.92); border: 1px solid rgba(0,240,255,0.15); border-radius: 12px;
@@ -1963,12 +1996,27 @@ export class UIManager {
         backdrop-filter: blur(8px); width: 100%; box-sizing: border-box;
       }
       .mode-card:hover, .mode-card:focus { border-color: var(--color-neonCyan); box-shadow: 0 0 20px rgba(0,240,255,0.2); transform: translateY(-2px); }
-      .mode-card:nth-child(5) { grid-column: 1 / -1; max-width: 100%; }
+      .mode-card:nth-child(5) { max-width: 100%; }
       .mode-label { display: block; font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 0.85rem; color: var(--color-neonCyan); line-height: 1.2; }
       .mode-desc { display: block; font-size: 0.72rem; color: var(--color-textSecondary); margin-top: 4px; line-height: 1.3; }
       .mode-best { display: block; font-size: 0.68rem; color: var(--color-neonGold); margin-top: 6px; }
 
-      .menu-nav { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; position: relative; z-index: 3; }
+      .menu-nav {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 8px;
+        position: relative;
+        z-index: 3;
+        width: 100%;
+      }
+      @media (min-width: 520px) {
+        .menu-nav {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: center;
+        }
+      }
       .menu-nav-label {
         font-family: 'Orbitron', sans-serif; font-size: 0.62rem; letter-spacing: 0.2em;
         color: var(--color-textSecondary); text-transform: uppercase; margin: 4px 0 10px;
@@ -1976,6 +2024,10 @@ export class UIManager {
       .menu-nav-btn {
         position: relative; z-index: 1; min-height: 44px;
         border: 1px solid rgba(255,255,255,0.22) !important;
+        width: 100%;
+        box-sizing: border-box;
+        text-align: center;
+        justify-content: center;
       }
       .menu-nav-btn.menu-nav-ready {
         border-color: rgba(255,215,0,0.45) !important;
@@ -2014,6 +2066,9 @@ export class UIManager {
         font-family: 'Orbitron', sans-serif; font-weight: 600; font-size: 0.8rem;
         padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer;
         transition: all 0.15s; letter-spacing: 0.05em;
+        box-sizing: border-box;
+        display: inline-flex; align-items: center; justify-content: center;
+        text-align: center;
       }
       .btn-primary { background: var(--color-neonCyan); color: var(--color-void); }
       .btn-primary:hover { box-shadow: 0 0 20px rgba(0,240,255,0.4); transform: translateY(-1px); }
@@ -2091,12 +2146,19 @@ export class UIManager {
       .modal-overlay { background: rgba(10,14,26,0.75); backdrop-filter: blur(4px); }
       .panel {
         background: rgba(18,24,41,0.95); border: 1px solid rgba(0,240,255,0.2);
-        border-radius: 16px; padding: 32px 24px; max-width: 420px; width: 90%;
+        border-radius: 16px; padding: 24px 20px; max-width: 420px; width: min(92vw, 420px);
         box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 40px rgba(0,240,255,0.05);
+        box-sizing: border-box;
+        margin: 0 auto;
       }
       .panel-scroll { max-height: 80vh; overflow-y: auto; }
       .modal-title { font-family: 'Orbitron', sans-serif; font-size: 1.4rem; font-weight: 800; text-align: center; margin-bottom: 20px; color: var(--color-neonCyan); }
-      .modal-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+      .modal-actions {
+        display: flex; flex-direction: column; gap: 10px; margin-top: 20px;
+        align-items: stretch; width: 100%;
+      }
+      .modal-actions .btn { width: 100%; }
+      .daily-bonus-modal .panel { text-align: center; }
 
       .new-high-score { text-align: center; color: var(--color-neonGold); font-family: 'Orbitron', sans-serif; font-weight: 700; margin-bottom: 16px; animation: pulse 1s ease-in-out infinite; }
       .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -2135,15 +2197,34 @@ export class UIManager {
       .daily-info { text-align: center; line-height: 2; margin-bottom: 16px; }
       .daily-complete { color: var(--color-neonGreen); font-weight: 600; }
 
-      /* Toast */
-      .toast {
-        position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-20px);
-        background: rgba(18,24,41,0.95); border: 1px solid var(--color-neonGold);
-        padding: 12px 24px; border-radius: 8px; z-index: 300;
-        font-family: 'Orbitron', sans-serif; font-size: 0.85rem; color: var(--color-neonGold);
-        opacity: 0; transition: all 0.3s; pointer-events: none;
+      /* Toast stack — messages queue vertically instead of overlapping */
+      .toast-stack {
+        position: fixed;
+        top: max(10px, env(safe-area-inset-top));
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 300;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        width: min(92vw, 380px);
+        pointer-events: none;
       }
-      .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+      .toast {
+        position: relative;
+        width: 100%;
+        background: rgba(18,24,41,0.96); border: 1px solid var(--color-neonGold);
+        padding: 10px 16px; border-radius: 8px;
+        font-family: 'Orbitron', sans-serif; font-size: 0.78rem; color: var(--color-neonGold);
+        text-align: center; line-height: 1.35;
+        opacity: 0; transform: translateY(-12px);
+        transition: opacity 0.25s ease, transform 0.25s ease;
+        pointer-events: none;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+        box-sizing: border-box;
+      }
+      .toast.visible { opacity: 1; transform: translateY(0); }
       .toast-bonus { border-color: var(--color-neonGold); color: var(--color-neonGold); }
       .toast-milestone { border-color: var(--color-neonViolet); color: var(--color-neonViolet); }
       .toast-combo { border-color: var(--color-neonCyan); color: var(--color-neonCyan); }
@@ -2242,12 +2323,20 @@ export class UIManager {
       @media (max-width: 480px) {
         .menu-nav-btn, .btn, .mode-card { min-height: 48px; }
         .hud-pause { min-width: 48px; min-height: 48px; }
+        .menu-title { font-size: clamp(1.4rem, 7vw, 1.8rem); }
+        .menu-subtitle { letter-spacing: 0.2em; font-size: 0.62rem; }
+        .mode-label { font-size: 0.8rem; }
+        .mode-desc { font-size: 0.68rem; }
+        .menu-nav-btn { font-size: 0.72rem; padding: 10px 6px; }
+        .panel { padding: 20px 16px; width: min(94vw, 420px); }
+        .modal-title { font-size: 1.15rem; }
       }
 
       .season-banner {
-        margin: 0 16px 12px; padding: 10px 14px; border-radius: 10px;
+        width: 100%;
+        padding: 10px 14px; border-radius: 10px;
         border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.35);
-        text-align: center; z-index: 2; position: relative;
+        text-align: center; box-sizing: border-box;
       }
       .season-label {
         display: block; font-family: 'Orbitron', sans-serif; font-size: 0.72rem;
@@ -2268,9 +2357,10 @@ export class UIManager {
       .season-sync .season-label { color: #00ff88; }
 
       .community-milestone {
-        margin: 0 16px 14px; padding: 10px 12px; border-radius: 10px;
+        width: 100%;
+        padding: 10px 12px; border-radius: 10px;
         border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.25);
-        z-index: 2; position: relative;
+        box-sizing: border-box;
       }
       .community-milestone .milestone-label {
         font-size: 0.65rem; color: var(--color-textSecondary); letter-spacing: 0.08em; margin-bottom: 6px;
@@ -2317,8 +2407,7 @@ export class UIManager {
       .replay-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 
       @media (min-width: 768px) {
-        .mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-        .mode-card:nth-child(5) { grid-column: 1 / -1; }
+        .menu-content { padding: 16px 20px 24px; }
         .menu-title { font-size: 2.4rem; }
       }
       @media (orientation: landscape) and (max-height: 500px) {
