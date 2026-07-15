@@ -18,9 +18,11 @@ import { UpgradeManager } from '@/core/UpgradeManager';
 import { GlobalLeaderboardService } from '@/core/GlobalLeaderboardService';
 import { EventBus } from '@/core/EventBus';
 import { AudioManager } from '@/core/AudioManager';
+import { InvestigationService } from '@/core/InvestigationService';
+import { getSignalCase } from '@/config/signalDetectiveConfig';
 import type { UpgradeId } from '@/types';
 
-type ScreenId = 'loading' | 'splash' | 'menu' | 'hud' | 'pause' | 'gameover' | 'settings' | 'achievements' | 'leaderboard' | 'daily' | 'weekly' | 'loadout' | 'profile' | 'replay' | 'upgrades' | 'help' | 'toast';
+type ScreenId = 'loading' | 'splash' | 'menu' | 'hud' | 'pause' | 'gameover' | 'settings' | 'achievements' | 'leaderboard' | 'daily' | 'weekly' | 'loadout' | 'profile' | 'replay' | 'upgrades' | 'help' | 'investigation' | 'toast';
 
 export class UIManager {
   private root: HTMLElement;
@@ -36,6 +38,7 @@ export class UIManager {
   private milestoneStatus: MilestoneStatus | null = null;
   private replayReturnTo: 'menu' | 'profile' = 'menu';
   private replayEscapeHandler: ((e: KeyboardEvent) => void) | null = null;
+  private investigationFocusId: string | null = null;
   private callbacks: {
     onStartGame?: (mode: GameMode) => void;
     onResume?: () => void;
@@ -157,6 +160,7 @@ export class UIManager {
       case 'replay': this.renderReplayViewer(); break;
       case 'upgrades': this.renderUpgrades(); break;
       case 'help': this.renderHelp(); break;
+      case 'investigation': this.renderInvestigation(); break;
     }
   }
 
@@ -666,6 +670,8 @@ export class UIManager {
         : GAME.SUBTITLE;
 
     const season = getActiveSeason();
+    const fragments = save.investigation.signalFragments;
+    const decodeReady = InvestigationService.countAvailable(save);
 
     this.overlay.className = `screen screen-menu menu-stage-${stage}${syncComplete ? ' menu-sync-complete' : ''} ${season.menuClass}`;
     this.overlay.innerHTML = `
@@ -689,9 +695,25 @@ export class UIManager {
           ${gridSync >= GRID_SYNC.THRESHOLDS.WHISPERS ? `<p class="menu-ai-whisper">The Grid remembers you.</p>` : ''}
         </header>
 
+        <div class="detective-hero">
+          <p class="detective-tagline">Runs harvest signal data. The Archive holds what the Grid is hiding.</p>
+          <div class="detective-actions">
+            <button type="button" class="btn btn-primary detective-archive-btn${decodeReady > 0 ? ' menu-nav-ready' : ''}" data-action="investigation">
+              📡 Signal Archive <span class="fragment-badge">${fragments} fragments</span>${decodeReady > 0 ? '<span class="nav-badge">!</span>' : ''}
+            </button>
+          </div>
+        </div>
+
+        <p class="menu-nav-label">Sync harvest — collect fragments</p>
         <div class="mode-grid">
-          ${(['endless', 'timeAttack60', 'timeAttack120', 'challenge', 'practice'] as GameMode[]).map((mode) => {
+          ${(['timeAttack60', 'endless', 'timeAttack120', 'challenge', 'practice'] as GameMode[]).map((mode) => {
             const conf = MODE_CONFIG[mode];
+            const label = mode === 'timeAttack60' ? 'SIGNAL HARVEST' : conf.label;
+            const desc = mode === 'timeAttack60'
+              ? 'Best way to collect signal fragments — 60 second sync.'
+              : mode === 'practice' && showPracticeCallout
+                ? 'No pressure — learn controls safely'
+                : conf.description;
             const best = mode === 'timeAttack60' ? save.highScores.timeAttack60
               : mode === 'timeAttack120' ? save.highScores.timeAttack120
               : mode === 'challenge' ? save.highScores.challenge
@@ -699,8 +721,8 @@ export class UIManager {
             return `
               <button class="mode-card${mode === 'practice' && showPracticeCallout ? ' mode-card-callout' : ''}" data-mode="${mode}" aria-label="Start ${conf.label} mode${mode === 'practice' && showPracticeCallout ? ' — recommended for new pilots' : ''}">
                 ${mode === 'practice' && showPracticeCallout ? '<span class="mode-callout-badge">START HERE</span>' : ''}
-                <span class="mode-label">${conf.label}</span>
-                <span class="mode-desc">${mode === 'practice' && showPracticeCallout ? 'No pressure — learn controls safely' : conf.description}</span>
+                <span class="mode-label">${label}</span>
+                <span class="mode-desc">${desc}</span>
                 ${best > 0 ? `<span class="mode-best">BEST: ${formatScore(best)}</span>` : ''}
               </button>
             `;
@@ -758,7 +780,7 @@ export class UIManager {
     const runs = this.save.save.stats.totalRuns;
     if (runs <= 1) {
       setTimeout(() => {
-        this.showToast('New here? Try Practice mode — no death, same mechanics', 'info');
+        this.showToast('Harvest signal data in runs — decode the mystery in 📡 Signal Archive', 'info');
       }, 1200);
     } else if (runs <= 3 && this.save.save.dataCredits >= 40 && !canAffordUpgrade) {
       setTimeout(() => {
@@ -801,6 +823,7 @@ export class UIManager {
         else if (action === 'replay') this.openReplay('menu');
         else if (action === 'upgrades') this.showScreen('upgrades');
         else if (action === 'help') this.showScreen('help');
+        else if (action === 'investigation') this.showScreen('investigation');
         else if (action === 'void') {
           this.showToast('Not yet.', 'info');
           this.showAIWhisper('You found something that is not ready.', 'glitch');
@@ -1025,6 +1048,7 @@ export class UIManager {
     xpGained?: number;
     creditsEarned?: number;
     syncUnlocks?: string[];
+    signalFragments?: number;
     globalRank?: number;
     globalTotal?: number;
     creditsToNext?: number | null;
@@ -1032,6 +1056,8 @@ export class UIManager {
     const rank = data.rankPercentile ?? 0;
     const rankMsg = rank >= 90 ? 'ELITE PILOT' : rank >= 70 ? 'SKILLED RUNNER' : rank >= 40 ? 'RISING SYNC' : 'KEEP TRAINING';
     const unlocks = data.syncUnlocks ?? [];
+    const signalFragments = data.signalFragments ?? 0;
+    const decodeReady = InvestigationService.countAvailable(this.save.save);
     const creditsEarned = data.creditsEarned ?? 0;
     const creditsToNext = data.creditsToNext;
     let creditsLine = `+${creditsEarned} ◈ this run`;
@@ -1052,6 +1078,7 @@ export class UIManager {
         <h2 class="modal-title">${data.score > 0 ? 'RUN COMPLETE' : 'SYSTEM FAILURE'}</h2>
         <p class="gameover-player-title">${this.save.save.worldMemory.playerTitle || 'Pilot'}</p>
         <p class="gameover-credits-line">${creditsLine}</p>
+        ${signalFragments > 0 ? `<p class="gameover-signal-line">+${signalFragments} signal fragments → Archive</p>` : ''}
         ${globalLine}
         ${data.newHighScore ? '<div class="new-high-score">★ NEW HIGH SCORE ★</div>' : ''}
         ${unlocks.length > 0 ? `<div class="unlock-banner">${unlocks.map((u) => `<span>🔓 ${u} UNLOCKED</span>`).join('')}</div>` : ''}
@@ -1069,6 +1096,7 @@ export class UIManager {
           <div class="stat-item"><span class="stat-label">DISTANCE</span><span class="stat-value">${Math.floor(data.distance)}m</span></div>
         </div>
         <div class="modal-actions">
+          ${decodeReady > 0 ? '<button class="btn btn-primary" data-action="investigation">📡 Decode Signals</button>' : ''}
           <button class="btn btn-primary" data-action="retry">↻ RETRY</button>
           <button class="btn btn-secondary" data-action="menu">⌂ MENU</button>
           <button class="btn btn-ghost" data-action="share">↗ SHARE</button>
@@ -1076,6 +1104,10 @@ export class UIManager {
       </div>
     `;
 
+    this.overlay.querySelector('[data-action="investigation"]')?.addEventListener('click', () => {
+      this.audio.playMenuConfirm();
+      this.showScreen('investigation');
+    });
     this.overlay.querySelector('[data-action="retry"]')?.addEventListener('click', () => {
       this.audio.playMenuConfirm();
       this.callbacks.onRetry?.();
@@ -1552,6 +1584,116 @@ export class UIManager {
     this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
       this.audio.playMenuConfirm();
       this.showScreen('menu');
+    });
+  }
+
+  private renderInvestigation(): void {
+    const save = this.save.save;
+    const caseId = InvestigationService.getActiveCase(save);
+    const caseDef = getSignalCase(caseId);
+    const progress = InvestigationService.caseProgress(caseId, save);
+    const nodes = InvestigationService.getNodesForCase(caseId, save);
+    const focusId = this.investigationFocusId
+      ?? nodes.find((n) => n.status === 'available')?.def.id
+      ?? nodes.find((n) => n.status === 'decoded')?.def.id
+      ?? nodes[0]?.def.id;
+    const focus = nodes.find((n) => n.def.id === focusId);
+
+    const mapHtml = nodes.map((n) => {
+      const label = n.status === 'decoded'
+        ? n.def.title.split(' ')[0]
+        : n.status === 'available'
+          ? `${n.def.fragmentCost}◈`
+          : '?';
+      return `<button type="button" class="signal-node signal-node-${n.status}${n.def.id === focusId ? ' signal-node-focus' : ''}" data-signal-id="${n.def.id}" style="left:${n.def.x}%;top:${n.def.y}%;" title="${n.def.preview}">${label}</button>`;
+    }).join('');
+
+    let detailHtml = '<p class="signal-detail-empty">Select a node on the map.</p>';
+    if (focus) {
+      const choiceLog = InvestigationService.getChoiceLog(focus.def.id, save);
+      if (focus.status === 'decoded') {
+        detailHtml = `
+          <h3 class="signal-detail-title">${focus.def.title}</h3>
+          <p class="signal-detail-body">${focus.def.body}</p>
+          ${choiceLog ? `<p class="signal-detail-choice">${choiceLog}</p>` : ''}
+          ${focus.def.choices && !save.investigation.choices[focus.def.id] ? `
+            <p class="signal-detail-prompt">Choose your interpretation:</p>
+            <div class="signal-choice-row">
+              ${focus.def.choices.map((c) => `<button type="button" class="btn btn-secondary btn-sm" data-signal-choice="${c.id}">${c.label}</button>`).join('')}
+            </div>` : ''}
+          ${focus.chosenLabel ? `<p class="signal-detail-picked">Logged: ${focus.chosenLabel}</p>` : ''}`;
+      } else if (focus.status === 'available') {
+        const canAfford = save.investigation.signalFragments >= focus.def.fragmentCost;
+        detailHtml = `
+          <h3 class="signal-detail-title">${focus.def.preview}</h3>
+          <p class="signal-detail-body signal-detail-locked-preview">${focus.def.body.slice(0, 120)}…</p>
+          <button type="button" class="btn btn-primary" data-signal-decode="${focus.def.id}" ${canAfford ? '' : 'disabled'}>
+            Decode — ${focus.def.fragmentCost} fragments
+          </button>
+          ${!canAfford ? '<p class="signal-detail-hint">Run Signal Harvest to collect more fragments.</p>' : ''}`;
+      } else {
+        detailHtml = `
+          <h3 class="signal-detail-title">Encrypted</h3>
+          <p class="signal-detail-body">${focus.def.preview}</p>
+          <p class="signal-detail-hint">Decode earlier signals and deepen Grid Sync to unlock.</p>`;
+      }
+    }
+
+    this.overlay.className = 'screen screen-investigation modal-overlay';
+    this.overlay.innerHTML = `
+      <div class="modal panel animate-in investigation-panel">
+        <div class="investigation-header">
+          <button type="button" class="btn btn-secondary btn-sm" data-action="back">← BACK</button>
+          <div class="investigation-header-text">
+            <h2 class="modal-title">${caseDef?.name ?? 'SIGNAL ARCHIVE'}</h2>
+            <p class="investigation-sub">${caseDef?.subtitle ?? ''}</p>
+          </div>
+          <span class="fragment-badge-lg">${save.investigation.signalFragments} ◈</span>
+        </div>
+        <div class="investigation-progress">
+          <span>Case progress</span>
+          <div class="progress-bar"><div class="progress-fill" style="width:${(progress.decoded / progress.total) * 100}%"></div></div>
+          <span>${progress.decoded}/${progress.total}</span>
+        </div>
+        <div class="signal-map" aria-label="Signal constellation">${mapHtml}</div>
+        <div class="signal-detail panel-inner">${detailHtml}</div>
+        <button type="button" class="btn btn-primary" data-mode="timeAttack60">⚡ Signal Harvest (60s)</button>
+      </div>`;
+
+    this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
+      this.audio.playMenuConfirm();
+      this.investigationFocusId = null;
+      this.showScreen('menu');
+    });
+    this.overlay.querySelector('[data-mode="timeAttack60"]')?.addEventListener('click', () => {
+      this.audio.playMenuConfirm();
+      this.callbacks.onStartGame?.('timeAttack60');
+    });
+    this.overlay.querySelectorAll('[data-signal-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.investigationFocusId = (btn as HTMLElement).dataset.signalId ?? null;
+        this.renderInvestigation();
+      });
+    });
+    this.overlay.querySelectorAll('[data-signal-decode]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = (btn as HTMLElement).dataset.signalDecode!;
+        if (this.save.decodeSignal(id)) {
+          this.audio.playAchievement();
+          this.showToast('Signal decoded', 'milestone');
+          this.renderInvestigation();
+        }
+      });
+    });
+    this.overlay.querySelectorAll('[data-signal-choice]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const choiceId = (btn as HTMLElement).dataset.signalChoice!;
+        if (focusId && this.save.setSignalChoice(focusId, choiceId)) {
+          this.audio.playMenuConfirm();
+          this.showToast('Hypothesis logged', 'info');
+          this.renderInvestigation();
+        }
+      });
     });
   }
 
@@ -2405,6 +2547,82 @@ export class UIManager {
       }
       .replay-canvas-wrap canvas { width: 100%; height: auto; display: block; border-radius: 6px; }
       .replay-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+      .detective-hero {
+        margin-bottom: 16px; padding: 14px; border-radius: 12px;
+        border: 1px solid rgba(139,92,246,0.35); background: rgba(139,92,246,0.08);
+      }
+      .detective-tagline {
+        font-size: 0.85rem; color: var(--color-textSecondary); line-height: 1.45;
+        margin-bottom: 12px; text-align: center;
+      }
+      .detective-actions { display: flex; flex-direction: column; gap: 8px; }
+      .detective-archive-btn { width: 100%; }
+      .fragment-badge { color: var(--color-neonViolet); font-weight: 700; margin-left: 6px; }
+      .fragment-badge-lg {
+        font-family: 'Orbitron', sans-serif; font-size: 0.75rem; color: var(--color-neonViolet);
+        white-space: nowrap;
+      }
+      .gameover-signal-line {
+        text-align: center; font-family: 'Orbitron', sans-serif; font-size: 0.82rem;
+        color: var(--color-neonViolet); margin: 0 0 10px; letter-spacing: 0.06em;
+      }
+
+      .screen-investigation { overflow-y: auto; align-items: flex-start; padding: 16px; }
+      .investigation-panel { max-width: 520px; width: min(94vw, 520px); padding: 18px 16px 20px; }
+      .investigation-header {
+        display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px;
+      }
+      .investigation-header-text { flex: 1; min-width: 0; }
+      .investigation-header .modal-title { font-size: 1rem; margin-bottom: 4px; text-align: left; }
+      .investigation-sub { font-size: 0.78rem; color: var(--color-textSecondary); margin: 0; }
+      .investigation-progress {
+        display: flex; align-items: center; gap: 8px; font-size: 0.72rem;
+        color: var(--color-textSecondary); margin-bottom: 12px;
+      }
+      .investigation-progress .progress-bar { flex: 1; height: 5px; }
+      .signal-map {
+        position: relative; height: 220px; margin-bottom: 14px;
+        border-radius: 12px; border: 1px solid rgba(0,240,255,0.15);
+        background: radial-gradient(ellipse at center, rgba(0,240,255,0.06), rgba(10,14,26,0.9));
+        overflow: hidden;
+      }
+      .signal-map::before {
+        content: ''; position: absolute; inset: 0;
+        background-image: radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
+        background-size: 18px 18px; pointer-events: none;
+      }
+      .signal-node {
+        position: absolute; transform: translate(-50%, -50%);
+        min-width: 44px; min-height: 44px; padding: 6px 8px; border-radius: 999px;
+        font-family: 'Orbitron', sans-serif; font-size: 0.62rem; font-weight: 700;
+        border: 1px solid rgba(255,255,255,0.2); background: rgba(18,24,41,0.9);
+        color: var(--color-textSecondary); cursor: pointer; z-index: 1;
+      }
+      .signal-node-available {
+        border-color: var(--color-neonViolet); color: var(--color-neonViolet);
+        box-shadow: 0 0 12px rgba(139,92,246,0.35);
+      }
+      .signal-node-decoded {
+        border-color: var(--color-neonCyan); color: var(--color-neonCyan);
+      }
+      .signal-node-focus { outline: 2px solid var(--color-neonGold); z-index: 2; }
+      .signal-detail {
+        text-align: left; padding: 12px; border-radius: 10px;
+        background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08);
+        margin-bottom: 12px; min-height: 100px;
+      }
+      .signal-detail-title {
+        font-family: 'Orbitron', sans-serif; font-size: 0.85rem; color: var(--color-neonCyan);
+        margin: 0 0 8px;
+      }
+      .signal-detail-body { font-size: 0.88rem; color: var(--color-textSecondary); line-height: 1.5; margin: 0 0 10px; }
+      .signal-detail-locked-preview { font-style: italic; opacity: 0.75; }
+      .signal-detail-hint { font-size: 0.78rem; color: var(--color-neonViolet); margin-top: 8px; }
+      .signal-detail-choice { font-size: 0.82rem; color: var(--color-neonGold); margin-top: 10px; font-style: italic; }
+      .signal-detail-prompt { font-size: 0.78rem; color: var(--color-textPrimary); margin: 10px 0 8px; }
+      .signal-choice-row { display: flex; flex-direction: column; gap: 8px; }
+      .signal-detail-picked { font-size: 0.75rem; color: var(--color-neonGreen); margin-top: 8px; }
 
       @media (min-width: 768px) {
         .menu-content { padding: 16px 20px 24px; }

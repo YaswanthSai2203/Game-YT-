@@ -3,11 +3,13 @@ import { STORAGE_KEY, GAME, LEADERBOARD_SIZE, SYNC, CREDITS, WEEKLY } from '@/co
 import { getTodayDateString, getWeekId, hashString } from '@/utils/math';
 import { HUD_SKINS, MUSIC_PACKS, AI_PERSONALITIES } from '@/config/engagementConfig';
 import { computePlayerTitle } from '@/config/directorConfig';
+import { InvestigationService } from './InvestigationService';
 import { GridSyncSystem } from '@/systems/GridSyncSystem';
 import { EventBus } from './EventBus';
 
 const LEGACY_STORAGE_KEY = 'neon-pulse-save-v1';
 const LEGACY_V2_KEY = 'neon-pulse-save-v2';
+const LEGACY_V4_KEY = 'neon-pulse-save-v4';
 const LEGACY_V3_KEY = 'neon-pulse-save-v3';
 
 function defaultWorldMemory(): WorldMemory {
@@ -110,6 +112,7 @@ function defaultSave(): SaveData {
     tutorialCompleted: false,
     lastDailyBonusDate: '',
     worldMemory: defaultWorldMemory(),
+    investigation: { signalFragments: 0, decodedIds: [], choices: {} },
   };
 }
 
@@ -124,6 +127,7 @@ function migrateSave(parsed: Partial<SaveData>): SaveData {
     tutorialCompleted: parsed.tutorialCompleted ?? false,
     lastDailyBonusDate: parsed.lastDailyBonusDate ?? '',
     worldMemory: { ...defaultWorldMemory(), ...parsed.worldMemory },
+    investigation: { ...base.investigation, ...parsed.investigation },
   };
   merged.worldMemory.worldStage = GridSyncSystem.computeWorldStage(merged.worldMemory.gridSync ?? 0);
   if (!merged.worldMemory.dimensionsEntered) merged.worldMemory.dimensionsEntered = [];
@@ -147,6 +151,12 @@ function migrateSave(parsed: Partial<SaveData>): SaveData {
   if (!merged.unlocks.selectedMusicPack) merged.unlocks.selectedMusicPack = 'synthwave';
   if (!merged.unlocks.selectedPersonality) merged.unlocks.selectedPersonality = 'observer';
   merged.worldMemory.playerTitle = computePlayerTitle(merged.worldMemory, merged.stats);
+  if (!merged.investigation) {
+    merged.investigation = { signalFragments: 0, decodedIds: [], choices: {} };
+  }
+  if (!merged.investigation.decodedIds) merged.investigation.decodedIds = [];
+  if (!merged.investigation.choices) merged.investigation.choices = {};
+  if (merged.investigation.signalFragments === undefined) merged.investigation.signalFragments = 0;
   return merged;
 }
 
@@ -185,6 +195,7 @@ export class SaveManager {
   load(): SaveData {
     try {
       let raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) raw = localStorage.getItem(LEGACY_V4_KEY);
       if (!raw) raw = localStorage.getItem(LEGACY_V3_KEY);
       if (!raw) raw = localStorage.getItem(LEGACY_V2_KEY);
       if (!raw) {
@@ -393,7 +404,13 @@ export class SaveManager {
     return this.data.worldMemory.seenPickups.includes(pickupId);
   }
 
-  recordRun(stats: RunStats): { newHighScore: boolean; xpGained: number; creditsEarned: number; syncUnlocks: string[] } {
+  recordRun(stats: RunStats): {
+    newHighScore: boolean;
+    xpGained: number;
+    creditsEarned: number;
+    syncUnlocks: string[];
+    signalFragments: number;
+  } {
     this.data.stats.totalRuns++;
     this.data.stats.totalShards += stats.shards;
     this.data.stats.totalScore += stats.score;
@@ -461,12 +478,29 @@ export class SaveManager {
     const creditsEarned = stats.creditsEarned ?? stats.shards * CREDITS.PER_SHARD;
     this.data.dataCredits += creditsEarned;
 
+    const signalFragments = InvestigationService.fragmentsFromRun(stats, this.data.worldMemory);
+    if (signalFragments > 0) {
+      this.data.investigation.signalFragments += signalFragments;
+    }
+
     this.data.worldMemory.worldStage = GridSyncSystem.computeWorldStage(this.data.worldMemory.gridSync);
     if (stats.timeAlive > this.data.worldMemory.longestRunSeconds) {
       this.data.worldMemory.longestRunSeconds = stats.timeAlive;
     }
 
     this.persist();
-    return { newHighScore, xpGained, creditsEarned, syncUnlocks };
+    return { newHighScore, xpGained, creditsEarned, syncUnlocks, signalFragments };
+  }
+
+  decodeSignal(nodeId: string): boolean {
+    const result = InvestigationService.decode(nodeId, this.data);
+    if (result.ok) this.persist();
+    return result.ok;
+  }
+
+  setSignalChoice(nodeId: string, choiceId: string): boolean {
+    const ok = InvestigationService.setChoice(nodeId, choiceId, this.data);
+    if (ok) this.persist();
+    return ok;
   }
 }

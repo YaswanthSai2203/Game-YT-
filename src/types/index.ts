@@ -185,6 +185,12 @@ export interface WorldMemory {
   seenPickups: string[];
 }
 
+export interface InvestigationState {
+  signalFragments: number;
+  decodedIds: string[];
+  choices: Record<string, string>;
+}
+
 export interface SaveData {
   version: number;
   profile: PlayerProfile;
@@ -201,6 +207,7 @@ export interface SaveData {
   tutorialCompleted: boolean;
   lastDailyBonusDate: string;
   worldMemory: WorldMemory;
+  investigation: InvestigationState;
 }
 
 export interface GameConfig {
