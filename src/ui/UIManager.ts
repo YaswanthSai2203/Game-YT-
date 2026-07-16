@@ -1,6 +1,6 @@
 import type { GameMode, GameSettings, RunStats } from '@/types';
 import { getColorBlindPalette } from '@/config/designTokens';
-import { MODE_CONFIG, SYNC, GAME, UPGRADES, WEEKLY } from '@/config/constants';
+import { MODE_CONFIG, SYNC, GAME, UPGRADES, WEEKLY, UI } from '@/config/constants';
 import { CORE_DEFS, TRAIL_DEFS, THEME_DEFS } from '@/config/cosmeticsConfig';
 import {
   HUD_SKINS, MUSIC_PACKS, AI_PERSONALITIES, getActiveSeason, getHudSkin,
@@ -12,6 +12,7 @@ import { analyzePlaystyle } from '@/utils/playstyleAnalysis';
 import { RUN_THEME_LORE, getLoreWhisperSuffix, type RunThemeId, type GridMood } from '@/config/directorConfig';
 import { LEADERBOARD } from '@/config/leaderboardConfig';
 import { formatScore, formatTime } from '@/utils/math';
+import { isCompactUI } from '@/utils/uiMode';
 import { SaveManager } from '@/core/SaveManager';
 import { AchievementManager } from '@/core/AchievementManager';
 import { UpgradeManager } from '@/core/UpgradeManager';
@@ -40,6 +41,7 @@ export class UIManager {
   private replayEscapeHandler: ((e: KeyboardEvent) => void) | null = null;
   private investigationFocusId: string | null = null;
   private lastScorePunchAt = 0;
+  private lastHypeAt = 0;
   private callbacks: {
     onStartGame?: (mode: GameMode) => void;
     onResume?: () => void;
@@ -290,10 +292,12 @@ export class UIManager {
 
     const vignette = this.overlay.querySelector('#hype-vignette');
     const comboCount = stats.comboCount ?? 0;
-    if (vignette) {
+    if (vignette && !isCompactUI()) {
       vignette.classList.toggle('active', comboCount >= 5);
       vignette.classList.toggle('intense', comboCount >= 15);
       vignette.classList.toggle('max', comboCount >= 25);
+    } else if (vignette) {
+      vignette.classList.remove('active', 'intense', 'max');
     }
     if (comboEl && comboCount >= 10) {
       comboEl.classList.add('combo-blazing');
@@ -303,7 +307,16 @@ export class UIManager {
   }
 
   private showHypeCallout(data: { title: string; subtitle?: string; tier?: number; color?: string }): void {
+    const tier = data.tier ?? 1;
+    if (this.isInActiveRun() && isCompactUI()) {
+      if (tier < 4) return;
+      const now = performance.now();
+      if (now - this.lastHypeAt < 1500) return;
+      this.lastHypeAt = now;
+    }
+
     if (this.save.settings.reducedMotion) {
+      if (this.isInActiveRun() && isCompactUI()) return;
       this.showToast(`${data.title}${data.subtitle ? ` — ${data.subtitle}` : ''}`, 'milestone');
       return;
     }
@@ -315,7 +328,6 @@ export class UIManager {
       this.root.appendChild(layer);
     }
 
-    const tier = data.tier ?? 1;
     const colorClass = data.color ? `hype-color-${data.color}` : 'hype-color-cyan';
     const el = document.createElement('div');
     el.className = `hype-callout ${colorClass} hype-tier-${tier}`;
@@ -333,7 +345,7 @@ export class UIManager {
   }
 
   private showFracturePortal(data: { dimension: string; subtitle: string; tint: string }): void {
-    if (this.save.settings.reducedMotion) return;
+    if (this.save.settings.reducedMotion || (this.isInActiveRun() && isCompactUI())) return;
     const portal = document.createElement('div');
     portal.className = 'reality-portal';
     portal.style.background = `radial-gradient(circle, ${data.tint}, transparent 70%)`;
@@ -354,7 +366,7 @@ export class UIManager {
   }
 
   private showRarePortal(data: { name: string; subtitle: string }): void {
-    if (this.save.settings.reducedMotion) return;
+    if (this.save.settings.reducedMotion || (this.isInActiveRun() && isCompactUI())) return;
     const portal = document.createElement('div');
     portal.className = 'reality-portal reality-portal-rare';
     portal.innerHTML = `
@@ -381,11 +393,11 @@ export class UIManager {
   }): void {
     const glitchEl = this.overlay.querySelector('#reality-glitch') as HTMLElement | null;
     const badge = this.overlay.querySelector('#reality-badge') as HTMLElement | null;
-    if (glitchEl && !this.save.settings.reducedMotion) {
+    if (glitchEl && !this.save.settings.reducedMotion && !isCompactUI()) {
       glitchEl.style.opacity = String(Math.min(0.85, state.glitch * 0.7));
       glitchEl.classList.toggle('active', state.glitch > 0.35);
     }
-    if (badge) {
+    if (badge && !isCompactUI()) {
       const label = state.rare
         ? state.rare.replace(/_/g, ' ').toUpperCase()
         : state.dimension;
@@ -427,6 +439,7 @@ export class UIManager {
   }
 
   showAIWhisper(text: string, tone?: string): void {
+    if (this.isInActiveRun() && isCompactUI()) return;
     let el = this.root.querySelector('#ai-whisper') as HTMLElement | null;
     if (!el) {
       el = document.createElement('div');
@@ -450,6 +463,7 @@ export class UIManager {
   }
 
   flashHexFragment(fragment: string): void {
+    if (this.isInActiveRun() && isCompactUI()) return;
     const el = document.createElement('div');
     el.className = 'hex-flash';
     el.textContent = fragment;
@@ -617,6 +631,7 @@ export class UIManager {
   }
 
   showRunTheme(label: string, subtitle: string, mood: string, themeId?: RunThemeId): void {
+    if (isCompactUI()) return;
     const loreOn = this.save.settings.gridLoreEnabled;
     let sub = subtitle;
     if (loreOn && themeId && RUN_THEME_LORE[themeId]) {
@@ -655,8 +670,55 @@ export class UIManager {
     `;
   }
 
+  /** Focused menu — three modes and essentials only. */
+  private renderSimpleMenu(): void {
+    const save = this.save.save;
+    const modes: { mode: GameMode; label: string; desc: string }[] = [
+      { mode: 'endless', label: 'PLAY', desc: 'Survive as long as you can' },
+      { mode: 'timeAttack60', label: '60 SECONDS', desc: 'Score as much as you can in one minute' },
+      { mode: 'practice', label: 'PRACTICE', desc: 'No death — learn the controls' },
+    ];
+
+    this.overlay.className = 'screen screen-menu screen-menu-simple';
+    this.overlay.innerHTML = `
+      <div class="menu-shell">
+        <header class="menu-header">
+          <h1 class="menu-title">${GAME.TITLE}</h1>
+          <p class="menu-subtitle">${GAME.SUBTITLE}</p>
+        </header>
+        <div class="mode-grid mode-grid-simple">
+          ${modes.map(({ mode, label, desc }) => {
+            const best = mode === 'timeAttack60' ? save.highScores.timeAttack60
+              : mode === 'practice' ? 0
+              : save.highScores.endless;
+            return `
+              <button type="button" class="mode-card mode-card-simple" data-mode="${mode}" aria-label="Start ${label}">
+                <span class="mode-label">${label}</span>
+                <span class="mode-desc">${desc}</span>
+                ${best > 0 ? `<span class="mode-best">Best: ${formatScore(best)}</span>` : ''}
+              </button>
+            `;
+          }).join('')}
+        </div>
+        <nav class="menu-nav menu-nav-simple" aria-label="Menu">
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="upgrades" aria-label="Upgrades">
+            ⚡ Upgrades <span class="credits-badge">${save.dataCredits}◈</span>
+          </button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="settings" aria-label="Settings">⚙️ Settings</button>
+          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="help" aria-label="How to play">❓ Help</button>
+        </nav>
+      </div>
+    `;
+
+    this.bindMenuEvents();
+  }
+
   private renderMenu(): void {
     this.cleanupTransientRootLayers();
+    if (UI.SIMPLE_MODE) {
+      this.renderSimpleMenu();
+      return;
+    }
     const save = this.save.save;
     const gridSync = save.worldMemory.gridSync;
     const stage = save.worldMemory.worldStage;
@@ -790,6 +852,7 @@ export class UIManager {
 
   /** Gentle one-time tips — clear without spoiling Grid mysteries. */
   private showMenuHints(dailyReady: boolean, canAffordUpgrade: boolean): void {
+    if (UI.SIMPLE_MODE) return;
     const runs = this.save.save.stats.totalRuns;
     if (runs <= 1) {
       setTimeout(() => {
@@ -847,15 +910,19 @@ export class UIManager {
   }
 
   private renderHUD(): void {
-    const skin = getHudSkin(this.save.save.unlocks.selectedHudSkin ?? 'default');
-    this.overlay.className = `screen screen-hud ${skin.cssClass}`;
+    const compact = isCompactUI();
+    const skin = getHudSkin(compact ? 'minimal' : (this.save.save.unlocks.selectedHudSkin ?? 'default'));
+    this.overlay.className = `screen screen-hud ${skin.cssClass}${compact ? ' hud-compact' : ''}`;
+    const hintText = compact
+      ? 'Tap screen edges to move · Tap center to phase'
+      : '◄ A / ← · D / → ► · SPACE / W = PHASE · ESC = PAUSE';
     this.overlay.innerHTML = `
       <div id="hype-vignette" class="hype-vignette"></div>
       <div id="reality-glitch" class="reality-glitch"></div>
       <div id="reality-badge" class="reality-badge hidden">REALITY</div>
       <div class="hud-top" role="group" aria-label="Run stats">
         <div class="hud-score-group" aria-label="Score">
-          <span class="hud-label">SCORE</span>
+          ${compact ? '' : '<span class="hud-label">SCORE</span>'}
           <span id="hud-score" class="hud-score" aria-live="polite" aria-atomic="true">0</span>
         </div>
         <div id="hud-challenge" class="hud-challenge hidden" aria-label="Challenge target">
@@ -888,13 +955,19 @@ export class UIManager {
         </div>
         <div id="hud-powerups" class="hud-powerups"></div>
       </div>
-      <div class="hud-hint">◄ A / ← · D / → ► · SPACE / W = PHASE · ESC = PAUSE</div>
+      <div class="hud-hint${compact ? ' hud-hint-touch' : ''}">${hintText}</div>
       <div id="tutorial-overlay" class="tutorial-overlay hidden" aria-live="polite">
         <div class="tutorial-panel">
           <h3>FIRST SYNC</h3>
+          ${compact ? `
+          <p>Tap left or right side of the screen to change lanes</p>
+          <p>Collect cyan shards — avoid red firewalls</p>
+          <p>Tap the center to phase through one firewall</p>
+          ` : `
           <p>◄ ► Move between lanes to collect cyan shards</p>
           <p>Avoid red firewalls — they destroy your core</p>
           <p>SPACE / W = Phase shift through one firewall</p>
+          `}
           <p class="tutorial-dismiss">Move once to begin</p>
         </div>
       </div>
@@ -980,8 +1053,22 @@ export class UIManager {
   }
 
   private renderHelp(): void {
+    const compact = isCompactUI();
     this.overlay.className = 'screen screen-help modal-overlay';
-    this.overlay.innerHTML = `
+    this.overlay.innerHTML = UI.SIMPLE_MODE ? `
+      <div class="modal panel panel-scroll animate-in">
+        <h2 class="modal-title">How to Play</h2>
+        <div class="help-section">
+          <ul class="help-list">
+            <li><strong>Move</strong> — ${compact ? 'Tap left or right side of the screen' : 'A/D or arrow keys (swipe on mobile)'}</li>
+            <li><strong>Phase</strong> — ${compact ? 'Tap the center of the screen' : 'Space / W / ↑'} to pass through one firewall</li>
+            <li><strong>Goal</strong> — Dodge red walls, collect cyan shards, build combos</li>
+            <li><strong>Pause</strong> — Tap the ⏸ button</li>
+          </ul>
+        </div>
+        <button type="button" class="btn btn-primary" data-action="back">Got it</button>
+      </div>
+    ` : `
       <div class="modal panel panel-scroll animate-in">
         <h2 class="modal-title">HOW TO PLAY</h2>
         <div class="help-section">
@@ -1056,6 +1143,51 @@ export class UIManager {
     });
   }
 
+  private renderSimpleGameOver(data: RunStats & {
+    newHighScore?: boolean;
+    creditsEarned?: number;
+  }): void {
+    this.overlay.className = 'screen screen-gameover modal-overlay';
+    this.overlay.innerHTML = `
+      <div class="modal panel animate-in gameover-panel gameover-panel-simple">
+        <h2 class="modal-title">${data.score > 0 ? 'Run Complete' : 'Game Over'}</h2>
+        ${data.newHighScore ? '<div class="new-high-score">★ New best score ★</div>' : ''}
+        <div class="stats-grid stats-grid-simple">
+          <div class="stat-item"><span class="stat-label">Score</span><span class="stat-value">${formatScore(data.score)}</span></div>
+          <div class="stat-item"><span class="stat-label">Shards</span><span class="stat-value">${data.shards}</span></div>
+          <div class="stat-item"><span class="stat-label">Time</span><span class="stat-value">${formatTime(data.timeAlive)}</span></div>
+          <div class="stat-item"><span class="stat-label">Credits</span><span class="stat-value">+${data.creditsEarned ?? 0}◈</span></div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" data-action="retry">↻ Play Again</button>
+          <button class="btn btn-secondary" data-action="menu">⌂ Menu</button>
+        </div>
+      </div>
+    `;
+
+    this.bindGameOverActions(data);
+  }
+
+  private bindGameOverActions(data: RunStats): void {
+    this.overlay.querySelector('[data-action="retry"]')?.addEventListener('click', () => {
+      this.audio.playMenuConfirm();
+      this.callbacks.onRetry?.();
+    });
+    this.overlay.querySelector('[data-action="menu"]')?.addEventListener('click', () => {
+      this.audio.playMenuConfirm();
+      this.callbacks.onQuit?.();
+    });
+    this.overlay.querySelector('[data-action="share"]')?.addEventListener('click', () => {
+      const text = `I scored ${formatScore(data.score)} in NEON PULSE! Can you beat me?`;
+      if (navigator.share) {
+        navigator.share({ title: 'NEON PULSE', text }).catch(() => {});
+      } else {
+        navigator.clipboard?.writeText(text);
+        this.showToast('Score copied to clipboard!');
+      }
+    });
+  }
+
   private renderGameOver(data: RunStats & {
     newHighScore?: boolean;
     xpGained?: number;
@@ -1066,6 +1198,10 @@ export class UIManager {
     globalTotal?: number;
     creditsToNext?: number | null;
   }): void {
+    if (UI.SIMPLE_MODE) {
+      this.renderSimpleGameOver(data);
+      return;
+    }
     const rank = data.rankPercentile ?? 0;
     const rankMsg = rank >= 90 ? 'ELITE PILOT' : rank >= 70 ? 'SKILLED RUNNER' : rank >= 40 ? 'RISING SYNC' : 'KEEP TRAINING';
     const unlocks = data.syncUnlocks ?? [];
@@ -1121,23 +1257,7 @@ export class UIManager {
       this.audio.playMenuConfirm();
       this.showScreen('investigation');
     });
-    this.overlay.querySelector('[data-action="retry"]')?.addEventListener('click', () => {
-      this.audio.playMenuConfirm();
-      this.callbacks.onRetry?.();
-    });
-    this.overlay.querySelector('[data-action="menu"]')?.addEventListener('click', () => {
-      this.audio.playMenuConfirm();
-      this.callbacks.onQuit?.();
-    });
-    this.overlay.querySelector('[data-action="share"]')?.addEventListener('click', () => {
-      const text = `I scored ${formatScore(data.score)} in NEON PULSE! Can you beat me?`;
-      if (navigator.share) {
-        navigator.share({ title: 'NEON PULSE', text }).catch(() => {});
-      } else {
-        navigator.clipboard?.writeText(text);
-        this.showToast('Score copied to clipboard!');
-      }
-    });
+    this.bindGameOverActions(data);
 
     if (data.newHighScore || (data.rankPercentile ?? 0) >= 85) {
       this.spawnConfetti();
@@ -1150,7 +1270,17 @@ export class UIManager {
   private renderSettings(): void {
     const s = this.save.settings;
     this.overlay.className = 'screen screen-settings modal-overlay';
-    this.overlay.innerHTML = `
+    this.overlay.innerHTML = UI.SIMPLE_MODE ? `
+      <div class="modal panel panel-scroll animate-in">
+        <h2 class="modal-title">Settings</h2>
+        <div class="settings-group">
+          ${this.sliderRow('Master Volume', 'masterVolume', s.masterVolume)}
+          ${this.sliderRow('Music Volume', 'musicVolume', s.musicVolume)}
+          ${this.toggleRow('Reduced Motion', 'reducedMotion', s.reducedMotion)}
+        </div>
+        <button class="btn btn-primary" data-action="back">← Back</button>
+      </div>
+    ` : `
       <div class="modal panel panel-scroll animate-in">
         <h2 class="modal-title">SETTINGS</h2>
         <div class="settings-group">
@@ -2648,6 +2778,68 @@ export class UIManager {
         .mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
         .mode-card { min-height: 64px; padding: 10px; }
         .mode-card:nth-child(5) { grid-column: 1 / -1; }
+      }
+
+      /* Simple menu — focused lane runner */
+      .screen-menu-simple .menu-shell { gap: 20px; padding-top: 8px; }
+      .screen-menu-simple .menu-header { text-align: center; margin-bottom: 4px; }
+      .screen-menu-simple .menu-subtitle { letter-spacing: 0.15em; font-size: 0.75rem; margin-bottom: 0; }
+      .mode-grid-simple { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+      .mode-card-simple {
+        min-height: 72px; padding: 16px 18px; text-align: left;
+        border-radius: 12px; border: 1px solid rgba(0,240,255,0.25);
+        background: rgba(0,240,255,0.06); cursor: pointer; width: 100%;
+      }
+      .mode-card-simple .mode-label { font-size: 1.05rem; font-weight: 700; display: block; }
+      .mode-card-simple .mode-desc { font-size: 0.78rem; color: var(--color-textSecondary); margin-top: 4px; display: block; }
+      .menu-nav-simple {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%;
+      }
+      .menu-nav-simple .menu-nav-btn { font-size: 0.72rem; padding: 12px 6px; min-height: 48px; }
+      .stats-grid-simple { grid-template-columns: 1fr 1fr; gap: 10px; }
+      .gameover-panel-simple .modal-title { font-size: 1.25rem; }
+
+      /* Compact mobile HUD — less clutter during play */
+      .screen-hud.hud-compact { padding: max(8px, env(safe-area-inset-top)) 12px max(10px, env(safe-area-inset-bottom)); }
+      .hud-compact .hud-top {
+        flex-wrap: nowrap; align-items: center; gap: 8px;
+        padding: 4px 0;
+      }
+      .hud-compact .hud-score { font-size: 1.35rem; font-weight: 700; line-height: 1; }
+      .hud-compact .hud-time { font-size: 0.95rem; margin-left: auto; }
+      .hud-compact .hud-pause {
+        min-width: 52px; min-height: 52px; font-size: 1.35rem;
+        border-radius: 12px; flex-shrink: 0;
+      }
+      .hud-compact .hud-bottom {
+        flex-direction: row; align-items: center; justify-content: space-between;
+        gap: 8px; padding: 6px 0 0;
+      }
+      .hud-compact .hud-speed-row,
+      .hud-compact .hud-phase,
+      .hud-compact .hud-hint-touch { display: none; }
+      .hud-compact .hud-combo-wrap { transform: scale(0.9); transform-origin: left center; }
+      .hud-compact .hud-powerups { max-width: 50%; justify-content: flex-end; }
+      .hud-compact #hype-vignette,
+      .hud-compact .reality-glitch,
+      .hud-compact .reality-badge { display: none !important; }
+
+      @media (max-width: 768px), (pointer: coarse) {
+        .hype-tier-1 .hype-title { font-size: clamp(1.3rem, 6vw, 2rem); }
+        .hype-tier-2 .hype-title { font-size: clamp(1.5rem, 7vw, 2.4rem); }
+        .hype-tier-3 .hype-title { font-size: clamp(1.7rem, 8vw, 2.8rem); }
+        .hype-tier-4 .hype-title { font-size: clamp(1.9rem, 9vw, 3.2rem); }
+        .hype-tier-5 .hype-title { font-size: clamp(2rem, 10vw, 3.6rem); }
+        .hype-subtitle { font-size: 0.85rem; }
+        .ai-whisper { bottom: calc(env(safe-area-inset-bottom, 0px) + 72px); font-size: 0.85rem; max-width: 88%; }
+        .run-theme-banner { display: none; }
+      }
+
+      @media (orientation: landscape) and (max-height: 500px) {
+        .hud-compact .hud-top { padding: 2px 0; }
+        .hud-compact .hud-bottom { padding-top: 2px; }
+        .hud-compact .hud-score { font-size: 1.15rem; }
+        .hud-compact .hud-pause { min-width: 44px; min-height: 44px; font-size: 1.1rem; }
       }
     `;
     document.head.appendChild(style);
