@@ -2,11 +2,16 @@ import type { GameMode } from '@/types';
 
 export const GAME = {
   TITLE: 'NEON PULSE',
-  SUBTITLE: 'SIGNAL DETECTIVE',
+  SUBTITLE: 'Dodge · Collect · Survive',
   VERSION: '2.0.0',
   SAVE_VERSION: 5,
   TARGET_FPS: 60,
   MAX_DELTA: 1 / 30,
+} as const;
+
+/** Strip menu clutter and calm in-run overlays — focus on core lane runner first. */
+export const UI = {
+  SIMPLE_MODE: true,
 } as const;
 
 export type UpgradeId = 'shardBoost' | 'phaseSync' | 'magnetField' | 'coreShield';
