@@ -1073,11 +1073,15 @@ export class UIManager {
       </div>
     `;
 
-    this.overlay.querySelector('#hud-pause')?.addEventListener('click', (e) => {
+    const pauseBtn = this.overlay.querySelector('#hud-pause');
+    const requestPause = (e: Event) => {
       e.stopPropagation();
+      if ('preventDefault' in e) e.preventDefault();
       this.audio.playMenuConfirm();
       this.callbacks.onPause?.();
-    });
+    };
+    pauseBtn?.addEventListener('pointerdown', requestPause);
+    pauseBtn?.addEventListener('touchstart', requestPause, { passive: false });
 
     this.overlay.querySelector('#tutorial-start-btn')?.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2087,7 +2091,10 @@ export class UIManager {
         z-index: 2;
       }
       .screen-hud { pointer-events: none; flex-direction: column; justify-content: space-between; padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); user-select: none; -webkit-user-select: none; }
-      .screen-hud .hud-top,
+      .screen-hud .hud-top {
+        pointer-events: auto;
+        touch-action: manipulation;
+      }
       .screen-hud .hud-bottom,
       .screen-hud .hud-hint,
       .screen-hud .hud-score,

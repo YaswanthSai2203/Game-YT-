@@ -13,6 +13,10 @@ export class InputManager {
   private lastLaneInput = 0;
   private readonly LANE_DEBOUNCE = 120;
   private ignoreInputUntil = 0;
+  private touchStartedOnUi = false;
+  /** Lane taps in the top strip are ignored (pause HUD + mis-taps through transparent HUD). */
+  private readonly HUD_TOP_DEAD_RATIO = 0.2;
+  private readonly HUD_TOP_DEAD_MIN_PX = 72;
   private readonly gameplayKeys = new Set([
     'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
     'KeyA', 'KeyD', 'KeyW', 'KeyS', 'Space',
@@ -40,10 +44,33 @@ export class InputManager {
     this.phaseActive = false;
     this.lastLaneInput = Date.now();
     this.ignoreInputUntil = Date.now() + 280;
+    this.touchStartedOnUi = true;
+  }
+
+  /** Call when opening pause — blocks the pause tap from counting as a lane change. */
+  cancelActiveTouch(): void {
+    this.touchStartedOnUi = true;
+    this.touchStartTime = 0;
+    this.ignoreInputUntil = Date.now() + 600;
+  }
+
+  private isUiTouchTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof Element)) return false;
+    return !!target.closest(
+      '#ui-overlay, #toast-stack, .modal-layer, .screen-pause, .hud-top, #hud-pause, button, [data-action], .menu-drawer, .menu-hamburger',
+    );
   }
 
   private shouldIgnoreInput(): boolean {
     return Date.now() < this.ignoreInputUntil;
+  }
+
+  private isInHudDeadZone(clientY: number): boolean {
+    const threshold = Math.max(
+      this.HUD_TOP_DEAD_MIN_PX,
+      window.innerHeight * this.HUD_TOP_DEAD_RATIO,
+    );
+    return clientY < threshold;
   }
 
   private bindEvents(): void {
@@ -62,6 +89,7 @@ export class InputManager {
   }
 
   private pollGamepad(): void {
+    if (!this.enabled) return;
     const pads = navigator.getGamepads?.();
     if (!pads) return;
 
@@ -132,14 +160,28 @@ export class InputManager {
   private onTouchStart = (e: TouchEvent): void => {
     if (!this.enabled || e.touches.length === 0) return;
     const touch = e.touches[0];
+    this.touchStartedOnUi =
+      this.isUiTouchTarget(e.target) || this.isInHudDeadZone(touch.clientY);
+    if (this.touchStartedOnUi) return;
     this.touchStartX = touch.clientX;
     this.touchStartY = touch.clientY;
     this.touchStartTime = Date.now();
   };
 
   private onTouchEnd = (e: TouchEvent): void => {
-    if (!this.enabled || e.changedTouches.length === 0 || this.shouldIgnoreInput()) return;
+    if (!this.enabled || e.changedTouches.length === 0 || this.shouldIgnoreInput()) {
+      this.touchStartedOnUi = false;
+      return;
+    }
+    if (this.touchStartedOnUi || this.isUiTouchTarget(e.target)) {
+      this.touchStartedOnUi = false;
+      return;
+    }
     const touch = e.changedTouches[0];
+    if (this.isInHudDeadZone(touch.clientY) || this.isInHudDeadZone(this.touchStartY)) {
+      this.touchStartedOnUi = false;
+      return;
+    }
     const dx = touch.clientX - this.touchStartX;
     const dy = touch.clientY - this.touchStartY;
     const dt = Date.now() - this.touchStartTime;
@@ -169,6 +211,7 @@ export class InputManager {
 
   private onPointerDown = (e: PointerEvent): void => {
     if (!this.enabled || e.pointerType === 'touch' || this.shouldIgnoreInput()) return;
+    if (this.isUiTouchTarget(e.target)) return;
     if (e.button === 0) {
       const screenThird = window.innerWidth / 3;
       if (e.clientX < screenThird) this.emitLane(-1);
