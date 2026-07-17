@@ -1073,6 +1073,12 @@ export class UIManager {
       </div>
     `;
 
+    this.overlay.querySelector('#hud-pause')?.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+    });
+    this.overlay.querySelector('#hud-pause')?.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+    }, { passive: true });
     this.overlay.querySelector('#hud-pause')?.addEventListener('click', (e) => {
       e.stopPropagation();
       this.audio.playMenuConfirm();
