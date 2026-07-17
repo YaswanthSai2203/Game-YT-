@@ -31,6 +31,8 @@ export class Game {
 
   private currentMode: GameMode = 'endless';
   private isPaused = false;
+  private manualPauseActive = false;
+  private autoPausedForBackground = false;
   private running = false;
   private lastTime = 0;
   private container: HTMLElement;
@@ -77,6 +79,9 @@ export class Game {
 
     window.addEventListener('resize', this.onResize);
     window.addEventListener('keydown', this.onPauseKey);
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
+    window.addEventListener('pagehide', this.onPageHide);
+    window.addEventListener('pageshow', this.onPageShow);
 
     this.ui.setCallbacks({
       onStartGame: (mode) => this.startGame(mode),
@@ -198,21 +203,30 @@ export class Game {
     requestAnimationFrame(() => this.app.canvas.focus());
   }
 
-  private pauseGame(): void {
-    if (this.isPaused || this.scenes.getCurrentId() !== 'game') return;
+  private pauseCore(): void {
     this.isPaused = true;
     this.gameScene.setPaused(true);
     this.input.setEnabled(false);
     this.audio.setPaused(true);
+  }
+
+  private pauseGame(): void {
+    if (this.isPaused || this.scenes.getCurrentId() !== 'game') return;
+    this.manualPauseActive = true;
+    this.autoPausedForBackground = false;
+    this.pauseCore();
     this.ui.showPause();
   }
 
   private resumeGame(): void {
     this.isPaused = false;
+    this.manualPauseActive = false;
+    this.autoPausedForBackground = false;
     this.gameScene.setPaused(false);
     this.input.flushAfterPause();
     this.input.setEnabled(true);
     this.audio.setPaused(false);
+    this.ui.dismissPauseModal();
     requestAnimationFrame(() => this.app.canvas.focus());
   }
 
@@ -267,6 +281,9 @@ export class Game {
       this.gameScene.abandonRunEarly();
     }
     this.isPaused = false;
+    this.manualPauseActive = false;
+    this.autoPausedForBackground = false;
+    this.ui.dismissPauseModal();
     this.audio.stopMusic();
     this.input.setEnabled(false);
     this.setCanvasVisible(false);
@@ -291,10 +308,49 @@ export class Game {
 
   private onPauseKey = (e: KeyboardEvent): void => {
     if (e.code === 'Escape' && this.scenes.getCurrentId() === 'game' && !this.gameScene.isGameOver()) {
-      if (this.isPaused) this.resumeGame();
-      else this.pauseGame();
+      if (this.isPaused && this.manualPauseActive) this.resumeGame();
+      else if (!this.isPaused) this.pauseGame();
     }
   };
+
+  private isRunEligibleForBackgroundPause(): boolean {
+    return this.scenes.getCurrentId() === 'game' && !this.gameScene.isGameOver();
+  }
+
+  private onVisibilityChange = (): void => {
+    this.syncBackgroundPauseState();
+  };
+
+  private onPageHide = (): void => {
+    this.syncBackgroundPauseState();
+  };
+
+  private onPageShow = (): void => {
+    this.syncBackgroundPauseState();
+  };
+
+  private syncBackgroundPauseState(): void {
+    const hidden = document.visibilityState === 'hidden' || document.hidden;
+
+    if (hidden) {
+      if (!this.isRunEligibleForBackgroundPause() || this.isPaused) return;
+      this.autoPausedForBackground = true;
+      this.manualPauseActive = false;
+      this.pauseCore();
+      return;
+    }
+
+    if (!this.autoPausedForBackground) return;
+    if (!this.isRunEligibleForBackgroundPause()) {
+      this.autoPausedForBackground = false;
+      return;
+    }
+    if (!this.isPaused) {
+      this.autoPausedForBackground = false;
+      return;
+    }
+    this.ui.showBackgroundReturnModal();
+  }
 
   private delay(ms: number): Promise<void> {
     return new Promise((r) => setTimeout(r, ms));
@@ -305,6 +361,9 @@ export class Game {
     this.app.ticker.remove(this.gameLoop);
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('keydown', this.onPauseKey);
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
+    window.removeEventListener('pagehide', this.onPageHide);
+    window.removeEventListener('pageshow', this.onPageShow);
     this.input.destroy();
     this.audio.destroy();
     this.analytics.destroy();
