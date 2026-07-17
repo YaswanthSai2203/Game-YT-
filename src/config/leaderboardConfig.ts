@@ -17,5 +17,6 @@ export function getLeaderboardApiBase(): string {
 }
 
 export function isGlobalLeaderboardEnabled(): boolean {
+  if (import.meta.env.VITE_PLAYABLES === 'true') return false;
   return typeof window !== 'undefined' && getLeaderboardApiBase().length > 0;
 }

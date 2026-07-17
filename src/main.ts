@@ -1,12 +1,24 @@
 import { Game } from '@/core/Game';
+import {
+  bindPlayablesLifecycle,
+  hydrateSaveFromPlayables,
+} from '@/platform/playables';
 
 async function main(): Promise<void> {
+  await hydrateSaveFromPlayables();
+
   const container = document.getElementById('game-container');
   if (!container) {
     throw new Error('Game container not found');
   }
 
   const game = new Game(container);
+
+  bindPlayablesLifecycle({
+    onPlatformPause: () => game.handlePlayablesPause(),
+    onPlatformResume: () => game.handlePlayablesResume(),
+    onPlatformAudioChange: (enabled) => game.handlePlayablesAudio(enabled),
+  });
 
   try {
     await game.init();

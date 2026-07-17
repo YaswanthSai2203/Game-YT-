@@ -15,6 +15,7 @@ export class AudioManager {
   private musicPlaying = false;
   private musicStep = 0;
   private pauseDucked = false;
+  private platformMuted = false;
   private save: SaveManager;
   private intensity = 0;
   private gridMood = 'curious';
@@ -45,7 +46,7 @@ export class AudioManager {
   private applyVolumes(): void {
     const s = this.save.settings;
     if (!this.masterGain) return;
-    this.masterGain.gain.value = s.masterVolume;
+    this.masterGain.gain.value = this.platformMuted ? 0 : s.masterVolume;
     if (this.sfxGain) this.sfxGain.gain.value = s.sfxVolume;
     if (this.musicGain) this.musicGain.gain.value = s.musicVolume;
   }
@@ -60,6 +61,11 @@ export class AudioManager {
     this.pauseDucked = ducked;
     const vol = this.save.settings.musicVolume * (ducked ? 0.15 : 1);
     this.musicGain.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.08);
+  }
+
+  setPlatformMuted(muted: boolean): void {
+    this.platformMuted = muted;
+    this.applyVolumes();
   }
 
   resume(): void {
