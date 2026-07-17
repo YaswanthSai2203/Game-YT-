@@ -12,6 +12,7 @@ export class InputManager {
   private gamepadIndex: number | null = null;
   private lastLaneInput = 0;
   private readonly LANE_DEBOUNCE = 120;
+  private ignoreInputUntil = 0;
   private readonly gameplayKeys = new Set([
     'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
     'KeyA', 'KeyD', 'KeyW', 'KeyS', 'Space',
@@ -32,6 +33,17 @@ export class InputManager {
 
   isPhaseActive(): boolean {
     return this.phaseActive;
+  }
+
+  flushAfterPause(): void {
+    this.keys.clear();
+    this.phaseActive = false;
+    this.lastLaneInput = Date.now();
+    this.ignoreInputUntil = Date.now() + 280;
+  }
+
+  private shouldIgnoreInput(): boolean {
+    return Date.now() < this.ignoreInputUntil;
   }
 
   private bindEvents(): void {
@@ -126,7 +138,7 @@ export class InputManager {
   };
 
   private onTouchEnd = (e: TouchEvent): void => {
-    if (!this.enabled || e.changedTouches.length === 0) return;
+    if (!this.enabled || e.changedTouches.length === 0 || this.shouldIgnoreInput()) return;
     const touch = e.changedTouches[0];
     const dx = touch.clientX - this.touchStartX;
     const dy = touch.clientY - this.touchStartY;
@@ -156,7 +168,7 @@ export class InputManager {
   };
 
   private onPointerDown = (e: PointerEvent): void => {
-    if (!this.enabled || e.pointerType === 'touch') return;
+    if (!this.enabled || e.pointerType === 'touch' || this.shouldIgnoreInput()) return;
     if (e.button === 0) {
       const screenThird = window.innerWidth / 3;
       if (e.clientX < screenThird) this.emitLane(-1);
@@ -169,6 +181,7 @@ export class InputManager {
   };
 
   private emitLane(direction: number): void {
+    if (this.shouldIgnoreInput()) return;
     this.bus.emit('player:move', { lane: direction });
   }
 

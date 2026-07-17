@@ -179,14 +179,21 @@ export class Game {
     this.ui.showScreen('hud');
     this.scenes.switchTo('game', config);
 
+    this.gameScene.setCountdownActive(true);
+    if (!this.save.save.tutorialCompleted) {
+      this.gameScene.setTutorialBlocking(true);
+      await this.ui.waitForTutorialDismiss();
+      this.gameScene.setTutorialBlocking(false);
+    }
+
     this.app.canvas.setAttribute('tabindex', '0');
     this.app.canvas.style.outline = 'none';
     requestAnimationFrame(() => this.app.canvas.focus());
 
     this.input.setEnabled(false);
-    this.gameScene.setCountdownActive(true);
     await this.ui.runCountdown();
     this.gameScene.setCountdownActive(false);
+    this.input.flushAfterPause();
     this.input.setEnabled(true);
     requestAnimationFrame(() => this.app.canvas.focus());
   }
@@ -203,6 +210,7 @@ export class Game {
   private resumeGame(): void {
     this.isPaused = false;
     this.gameScene.setPaused(false);
+    this.input.flushAfterPause();
     this.input.setEnabled(true);
     this.audio.setPaused(false);
     requestAnimationFrame(() => this.app.canvas.focus());

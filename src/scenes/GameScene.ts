@@ -91,6 +91,13 @@ export class GameScene extends BaseScene {
   private gameOver = false;
   private paused = false;
   private countdownActive = false;
+  private tutorialBlocking = false;
+  private savedMotion: {
+    playerLane: number;
+    playerTargetLane: number;
+    laneSwitchProgress: number;
+    playerX: number;
+  } | null = null;
 
   private livingBg: LivingBackgroundSystem | null = null;
   private cameraZoom = 1;
@@ -149,7 +156,7 @@ export class GameScene extends BaseScene {
     this.bindInput();
     this.resetGame();
     if (!this.save.save.tutorialCompleted) {
-      this.events.emit('ui:tutorial', { step: 0 });
+      this.tutorialBlocking = true;
     }
     this.audio.startMusic();
   }
@@ -209,7 +216,32 @@ export class GameScene extends BaseScene {
   }
 
   setPaused(value: boolean): void {
+    if (value && !this.paused) {
+      this.savedMotion = {
+        playerLane: this.playerLane,
+        playerTargetLane: this.playerTargetLane,
+        laneSwitchProgress: this.laneSwitchProgress,
+        playerX: this.playerX,
+      };
+    } else if (!value && this.savedMotion) {
+      this.playerLane = this.savedMotion.playerLane;
+      this.playerTargetLane = this.savedMotion.playerTargetLane;
+      this.laneSwitchProgress = this.savedMotion.laneSwitchProgress;
+      this.playerX = this.savedMotion.playerX;
+      if (this.playerContainer) {
+        this.playerContainer.x = this.playerX;
+      }
+      this.savedMotion = null;
+    }
     this.paused = value;
+  }
+
+  setTutorialBlocking(value: boolean): void {
+    this.tutorialBlocking = value;
+  }
+
+  isTutorialBlocking(): boolean {
+    return this.tutorialBlocking;
   }
 
   setCountdownActive(value: boolean): void {
@@ -337,6 +369,7 @@ export class GameScene extends BaseScene {
     this.timeAlive = 0;
     this.gameOver = false;
     this.paused = false;
+    this.tutorialBlocking = false;
     this.phaseActive = false;
     this.phaseTimer = 0;
     this.phaseCooldown = 0;
@@ -380,7 +413,7 @@ export class GameScene extends BaseScene {
   }
 
   private moveLane(direction: number): void {
-    if (this.gameOver || this.paused) return;
+    if (this.gameOver || this.paused || this.countdownActive || this.tutorialBlocking) return;
     const maxLane = this.fourthLaneActive ? 3 : LANES.COUNT - 1;
     const newLane = clamp(this.playerTargetLane + direction, 0, maxLane);
     if (newLane !== this.playerTargetLane) {
@@ -394,15 +427,11 @@ export class GameScene extends BaseScene {
         this.gridSync.onFirstMove(direction, sameAsLast);
         this.lastRunFirstMove = direction;
       }
-      if (!this.save.save.tutorialCompleted) {
-        this.save.markTutorialComplete();
-        this.events.emit('ui:tutorial', { step: -1 });
-      }
     }
   }
 
   private handlePhase(active: boolean): void {
-    if (this.gameOver || this.paused) return;
+    if (this.gameOver || this.paused || this.countdownActive || this.tutorialBlocking) return;
     if (active && this.phaseCooldown <= 0 && !this.phaseActive) {
       this.phaseActive = true;
       this.phaseTimer = PLAYER.PHASE_DURATION;
@@ -415,7 +444,7 @@ export class GameScene extends BaseScene {
   }
 
   override update(dt: number): void {
-    if (this.gameOver || this.paused || this.countdownActive || this.gamePausedForEvent) return;
+    if (this.gameOver || this.paused || this.countdownActive || this.tutorialBlocking || this.gamePausedForEvent) return;
 
     if (this.slowMoTimer > 0) {
       this.slowMoTimer -= dt;
