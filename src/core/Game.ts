@@ -14,6 +14,8 @@ import { UIManager } from '@/ui/UIManager';
 import { clamp } from '@/utils/math';
 import { FAKE_ENDING_SCORE } from '@/config/sentientConfig';
 import { GlobalLeaderboardService } from '@/core/GlobalLeaderboardService';
+import { isYouTubePlayablesRuntime } from '@/config/platform';
+import { notifyFirstFrameReady, notifyGameReady, pushSaveToPlayables } from '@/platform/playables';
 
 export class Game {
   private app!: Application;
@@ -33,6 +35,7 @@ export class Game {
   private isPaused = false;
   private manualPauseActive = false;
   private autoPausedForBackground = false;
+  private playablesPaused = false;
   private running = false;
   private lastTime = 0;
   private container: HTMLElement;
@@ -56,6 +59,7 @@ export class Game {
     );
 
     this.ui.showScreen('loading');
+    notifyFirstFrameReady();
 
     this.app = new Application();
     await this.app.init({
@@ -79,9 +83,11 @@ export class Game {
 
     window.addEventListener('resize', this.onResize);
     window.addEventListener('keydown', this.onPauseKey);
-    document.addEventListener('visibilitychange', this.onVisibilityChange);
-    window.addEventListener('pagehide', this.onPageHide);
-    window.addEventListener('pageshow', this.onPageShow);
+    if (!isYouTubePlayablesRuntime()) {
+      document.addEventListener('visibilitychange', this.onVisibilityChange);
+      window.addEventListener('pagehide', this.onPageHide);
+      window.addEventListener('pageshow', this.onPageShow);
+    }
 
     this.ui.setCallbacks({
       onStartGame: (mode) => this.startGame(mode),
@@ -107,6 +113,7 @@ export class Game {
     ]);
 
     this.goToMenu();
+    notifyGameReady();
     this.running = true;
     this.lastTime = performance.now();
     this.app.ticker.add(this.gameLoop);
@@ -209,6 +216,7 @@ export class Game {
     this.gameScene.setPaused(true);
     this.input.setEnabled(false);
     this.audio.setPaused(true);
+    pushSaveToPlayables();
   }
 
   private pauseGame(): void {
@@ -357,14 +365,45 @@ export class Game {
     return new Promise((r) => setTimeout(r, ms));
   }
 
+  /** YouTube Playables SDK — full pause (no Page Visibility API in certification). */
+  handlePlayablesPause(): void {
+    this.playablesPaused = true;
+    pushSaveToPlayables();
+    if (this.scenes.getCurrentId() === 'game' && !this.gameScene.isGameOver() && !this.isPaused) {
+      this.manualPauseActive = false;
+      this.autoPausedForBackground = false;
+      this.pauseCore();
+      this.app.ticker.stop();
+      return;
+    }
+    if (this.scenes.getCurrentId() !== 'game') {
+      this.audio.setPaused(true);
+      this.app.ticker.stop();
+    }
+  }
+
+  handlePlayablesResume(): void {
+    if (!this.playablesPaused) return;
+    this.playablesPaused = false;
+    if (this.running) this.app.ticker.start();
+    if (this.isPaused) return;
+    this.audio.setPaused(false);
+  }
+
+  handlePlayablesAudio(enabled: boolean): void {
+    this.audio.setPlatformMuted(!enabled);
+  }
+
   destroy(): void {
     this.running = false;
     this.app.ticker.remove(this.gameLoop);
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('keydown', this.onPauseKey);
-    document.removeEventListener('visibilitychange', this.onVisibilityChange);
-    window.removeEventListener('pagehide', this.onPageHide);
-    window.removeEventListener('pageshow', this.onPageShow);
+    if (!isYouTubePlayablesRuntime()) {
+      document.removeEventListener('visibilitychange', this.onVisibilityChange);
+      window.removeEventListener('pagehide', this.onPageHide);
+      window.removeEventListener('pageshow', this.onPageShow);
+    }
     this.input.destroy();
     this.audio.destroy();
     this.analytics.destroy();

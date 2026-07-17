@@ -1,4 +1,5 @@
 import { COMMUNITY_MILESTONE } from '@/config/engagementConfig';
+import { isYouTubePlayablesRuntime } from '@/config/platform';
 
 export interface MilestoneStatus {
   total: number;
@@ -23,6 +24,7 @@ export class CommunityMilestoneService {
       percent: 0,
       available: false,
     };
+    if (isYouTubePlayablesRuntime()) return fallback;
     try {
       const res = await fetch(`${this.baseUrl}/api/milestone`);
       if (!res.ok) return fallback;
@@ -42,7 +44,7 @@ export class CommunityMilestoneService {
   }
 
   async contribute(shards: number): Promise<boolean> {
-    if (shards <= 0) return false;
+    if (shards <= 0 || isYouTubePlayablesRuntime()) return false;
     try {
       const res = await fetch(`${this.baseUrl}/api/milestone`, {
         method: 'POST',

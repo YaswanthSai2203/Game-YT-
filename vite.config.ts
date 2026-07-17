@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 
+const playables = process.env.VITE_PLAYABLES === 'true';
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -12,15 +14,19 @@ export default defineConfig({
     target: 'es2022',
     minify: 'esbuild',
     rollupOptions: {
+      input: playables ? path.resolve(__dirname, 'index.playables.html') : undefined,
       output: {
-        manualChunks: {
+        manualChunks: playables ? undefined : {
           pixi: ['pixi.js'],
         },
       },
     },
   },
   plugins: [
-    VitePWA({
+    ...(playables
+      ? []
+      : [
+          VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon.svg'],
       manifest: {
@@ -44,5 +50,6 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
       },
     }),
+        ]),
   ],
 });
