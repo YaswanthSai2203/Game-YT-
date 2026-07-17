@@ -14,6 +14,9 @@ export class InputManager {
   private readonly LANE_DEBOUNCE = 120;
   private ignoreInputUntil = 0;
   private touchStartedOnUi = false;
+  /** Lane taps in the top strip are ignored (pause HUD + mis-taps through transparent HUD). */
+  private readonly HUD_TOP_DEAD_RATIO = 0.2;
+  private readonly HUD_TOP_DEAD_MIN_PX = 72;
   private readonly gameplayKeys = new Set([
     'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
     'KeyA', 'KeyD', 'KeyW', 'KeyS', 'Space',
@@ -60,6 +63,14 @@ export class InputManager {
 
   private shouldIgnoreInput(): boolean {
     return Date.now() < this.ignoreInputUntil;
+  }
+
+  private isInHudDeadZone(clientY: number): boolean {
+    const threshold = Math.max(
+      this.HUD_TOP_DEAD_MIN_PX,
+      window.innerHeight * this.HUD_TOP_DEAD_RATIO,
+    );
+    return clientY < threshold;
   }
 
   private bindEvents(): void {
@@ -149,7 +160,8 @@ export class InputManager {
   private onTouchStart = (e: TouchEvent): void => {
     if (!this.enabled || e.touches.length === 0) return;
     const touch = e.touches[0];
-    this.touchStartedOnUi = this.isUiTouchTarget(e.target);
+    this.touchStartedOnUi =
+      this.isUiTouchTarget(e.target) || this.isInHudDeadZone(touch.clientY);
     if (this.touchStartedOnUi) return;
     this.touchStartX = touch.clientX;
     this.touchStartY = touch.clientY;
@@ -166,6 +178,10 @@ export class InputManager {
       return;
     }
     const touch = e.changedTouches[0];
+    if (this.isInHudDeadZone(touch.clientY) || this.isInHudDeadZone(this.touchStartY)) {
+      this.touchStartedOnUi = false;
+      return;
+    }
     const dx = touch.clientX - this.touchStartX;
     const dy = touch.clientY - this.touchStartY;
     const dt = Date.now() - this.touchStartTime;
