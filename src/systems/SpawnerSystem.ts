@@ -1,6 +1,6 @@
 import type { PowerupType } from '@/types';
 import type { RealityModifiers } from '@/systems/QuantumRealitySystem';
-import { DIFFICULTY, POWERUP, PICKUP, SCROLL } from '@/config/constants';
+import { DIFFICULTY, POWERUP, PICKUP, SCROLL, UI } from '@/config/constants';
 import { pickPattern, type PatternDef, type SpawnCmd } from '@/config/patternLibrary';
 import { createRng, randomInt, lerp, smoothstep } from '@/utils/math';
 
@@ -201,7 +201,7 @@ export class SpawnerSystem {
         const roll = this.rng();
         if (roll < PICKUP.BONUS_SPAWN_CHANCE) {
           this.spawnEntity('score_boost', lane);
-        } else if (roll < PICKUP.BONUS_SPAWN_CHANCE + PICKUP.TRAP_SPAWN_CHANCE) {
+        } else if (!UI.SIMPLE_MODE && roll < PICKUP.BONUS_SPAWN_CHANCE + PICKUP.TRAP_SPAWN_CHANCE) {
           this.spawnEntity('bomb', lane);
         }
       }

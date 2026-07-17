@@ -13,7 +13,7 @@ import { RUN_THEME_LORE, getLoreWhisperSuffix, type RunThemeId, type GridMood } 
 import { LEADERBOARD } from '@/config/leaderboardConfig';
 import { formatScore, formatTime } from '@/utils/math';
 import { isCompactUI } from '@/utils/uiMode';
-import { msIcon } from '@/utils/icons';
+import { msIcon, pointsLabel } from '@/utils/icons';
 import { SaveManager } from '@/core/SaveManager';
 import { AchievementManager } from '@/core/AchievementManager';
 import { UpgradeManager } from '@/core/UpgradeManager';
@@ -44,6 +44,7 @@ export class UIManager {
   private lastScorePunchAt = 0;
   private lastHypeAt = 0;
   private tutorialDismissResolve: (() => void) | null = null;
+  private pauseModalEl: HTMLElement | null = null;
   private callbacks: {
     onStartGame?: (mode: GameMode) => void;
     onResume?: () => void;
@@ -500,7 +501,7 @@ export class UIManager {
   }
 
   flashHexFragment(fragment: string): void {
-    if (this.isInActiveRun() && isCompactUI()) return;
+    if (this.isInActiveRun()) return;
     const el = document.createElement('div');
     el.className = 'hex-flash';
     el.textContent = fragment;
@@ -1120,7 +1121,6 @@ export class UIManager {
             const cost = this.upgrades.getCost(id);
             const canBuy = this.upgrades.canAfford(id);
             const deficit = Math.max(0, cost - credits);
-            const buyLabel = maxed ? 'MAX' : canBuy ? `${cost}◈` : `+${deficit}◈`;
             return `
               <div class="upgrade-item ${maxed ? 'maxed' : ''} ${canBuy ? 'can-buy' : ''}">
                 <span class="upgrade-icon">${def.icon}</span>
@@ -1130,7 +1130,7 @@ export class UIManager {
                   ${!maxed && !canBuy ? `<span class="upgrade-need">Need ${deficit} more ◈ — keep collecting shards</span>` : ''}
                 </div>
                 <button type="button" class="btn btn-primary btn-sm" data-upgrade="${id}" ${!canBuy ? 'disabled' : ''} aria-label="${maxed ? `${def.name} maxed` : canBuy ? `Buy ${def.name} for ${cost} credits` : `Need ${deficit} more credits for ${def.name}`}">
-                  ${maxed ? '✓' : buyLabel}
+                  ${maxed ? `${msIcon('check')} MAX` : canBuy ? `${pointsLabel(cost)}` : `+${deficit}`}
                 </button>
               </div>
             `;
@@ -1222,28 +1222,65 @@ export class UIManager {
   }
 
   showPause(): void {
-    this.removeModals();
+    this.openPauseModal({
+      title: 'Paused',
+      subtitle: 'Take a breath — the grid can wait.',
+      kind: 'manual',
+    });
+  }
+
+  /** Shown when returning from a hidden tab — game stays frozen until Resume or Quit. */
+  showBackgroundReturnModal(): void {
+    this.openPauseModal({
+      title: 'Welcome back',
+      subtitle: 'Your run was paused while you were away.',
+      kind: 'background',
+    });
+  }
+
+  dismissPauseModal(): void {
+    this.pauseModalEl?.remove();
+    this.pauseModalEl = null;
+  }
+
+  hasPauseModal(): boolean {
+    return this.pauseModalEl !== null;
+  }
+
+  private openPauseModal(options: { title: string; subtitle?: string; kind: 'manual' | 'background' }): void {
+    if (this.pauseModalEl) {
+      if (options.kind === 'background') return;
+      this.dismissPauseModal();
+    }
+    if (options.kind === 'manual') {
+      this.removeModals();
+    }
+
     const pauseEl = document.createElement('div');
     pauseEl.className = 'modal-layer screen-pause';
     pauseEl.style.pointerEvents = 'auto';
+    pauseEl.dataset.pauseKind = options.kind;
     pauseEl.innerHTML = `
       <div class="modal panel animate-in">
-        <h2 class="modal-title">PAUSED</h2>
+        <h2 class="modal-title">${options.title}</h2>
+        ${options.subtitle ? `<p class="pause-subtitle">${options.subtitle}</p>` : ''}
         <div class="modal-actions">
-          <button class="btn btn-primary" data-action="resume">${msIcon('play_arrow')} RESUME</button>
-          <button class="btn btn-secondary" data-action="quit">${msIcon('close')} QUIT</button>
+          <button type="button" class="btn btn-primary" data-action="resume">${msIcon('play_arrow')} Resume</button>
+          <button type="button" class="btn btn-secondary" data-action="quit">${msIcon('logout')} Quit</button>
         </div>
       </div>
     `;
     this.overlay.appendChild(pauseEl);
+    this.pauseModalEl = pauseEl;
 
     pauseEl.querySelector('[data-action="resume"]')?.addEventListener('click', () => {
       this.audio.playMenuConfirm();
-      pauseEl.remove();
+      this.dismissPauseModal();
       this.callbacks.onResume?.();
     });
     pauseEl.querySelector('[data-action="quit"]')?.addEventListener('click', () => {
       this.audio.playMenuConfirm();
+      this.dismissPauseModal();
       this.callbacks.onQuit?.();
     });
   }
@@ -1261,7 +1298,7 @@ export class UIManager {
           <div class="stat-item"><span class="stat-label">Score</span><span class="stat-value">${formatScore(data.score)}</span></div>
           <div class="stat-item"><span class="stat-label">Shards</span><span class="stat-value">${data.shards}</span></div>
           <div class="stat-item"><span class="stat-label">Time</span><span class="stat-value">${formatTime(data.timeAlive)}</span></div>
-          <div class="stat-item"><span class="stat-label">Credits</span><span class="stat-value">+${data.creditsEarned ?? 0}◈</span></div>
+          <div class="stat-item"><span class="stat-label">Credits</span><span class="stat-value">+${data.creditsEarned ?? 0}</span></div>
         </div>
         <div class="modal-actions">
           <button class="btn btn-primary" data-action="retry">${msIcon('replay')} Play Again</button>
@@ -1350,10 +1387,10 @@ export class UIManager {
           <div class="stat-item"><span class="stat-label">DISTANCE</span><span class="stat-value">${Math.floor(data.distance)}m</span></div>
         </div>
         <div class="modal-actions">
-          ${decodeReady > 0 ? '<button class="btn btn-primary" data-action="investigation">📡 Decode Signals</button>' : ''}
-          <button class="btn btn-primary" data-action="retry">↻ RETRY</button>
-          <button class="btn btn-secondary" data-action="menu">⌂ MENU</button>
-          <button class="btn btn-ghost" data-action="share">↗ SHARE</button>
+          ${decodeReady > 0 ? `<button class="btn btn-primary" data-action="investigation">${msIcon('radar')} Decode Signals</button>` : ''}
+          <button class="btn btn-primary" data-action="retry">${msIcon('replay')} Retry</button>
+          <button class="btn btn-secondary" data-action="menu">${msIcon('home')} Menu</button>
+          <button class="btn btn-ghost" data-action="share">${msIcon('share')} Share</button>
         </div>
       </div>
     `;
@@ -2564,6 +2601,7 @@ export class UIManager {
       }
       .panel-scroll { max-height: 80vh; overflow-y: auto; }
       .modal-title { font-family: 'Orbitron', sans-serif; font-size: 1.4rem; font-weight: 800; text-align: center; margin-bottom: 20px; color: var(--color-neonCyan); }
+      .pause-subtitle { text-align: center; color: var(--color-textSecondary); font-size: 0.9rem; margin: -12px 0 16px; line-height: 1.45; padding: 0 8px; }
       .modal-actions {
         display: flex; flex-direction: column; gap: 10px; margin-top: 20px;
         align-items: stretch; width: 100%;
