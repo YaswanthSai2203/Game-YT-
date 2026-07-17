@@ -176,10 +176,10 @@ export class Game {
       config.targetScore = WEEKLY.TARGET_SCORE;
     }
 
+    this.gameScene.setCountdownActive(true);
     this.ui.showScreen('hud');
     this.scenes.switchTo('game', config);
 
-    this.gameScene.setCountdownActive(true);
     if (!this.save.save.tutorialCompleted) {
       this.gameScene.setTutorialBlocking(true);
       await this.ui.waitForTutorialDismiss();
