@@ -13,6 +13,7 @@ import { RUN_THEME_LORE, getLoreWhisperSuffix, type RunThemeId, type GridMood } 
 import { LEADERBOARD } from '@/config/leaderboardConfig';
 import { formatScore, formatTime } from '@/utils/math';
 import { isCompactUI } from '@/utils/uiMode';
+import { msIcon } from '@/utils/icons';
 import { SaveManager } from '@/core/SaveManager';
 import { AchievementManager } from '@/core/AchievementManager';
 import { UpgradeManager } from '@/core/UpgradeManager';
@@ -42,6 +43,7 @@ export class UIManager {
   private investigationFocusId: string | null = null;
   private lastScorePunchAt = 0;
   private lastHypeAt = 0;
+  private tutorialDismissResolve: (() => void) | null = null;
   private callbacks: {
     onStartGame?: (mode: GameMode) => void;
     onResume?: () => void;
@@ -118,7 +120,38 @@ export class UIManager {
       /* Visual feedback only — flash handled in GameScene */
     });
 
-    this.events.on('settings:change', () => this.applyTheme());
+    this.events.on('settings:change', (d) => this.applySettingsPatch(d.settings));
+  }
+
+  /** First-run in-game tutorial — gameplay waits until the player taps Start. */
+  waitForTutorialDismiss(): Promise<void> {
+    if (this.save.save.tutorialCompleted) return Promise.resolve();
+    return new Promise((resolve) => {
+      this.tutorialDismissResolve = resolve;
+    });
+  }
+
+  private completeRunTutorial(): void {
+    this.save.markTutorialComplete();
+    this.hideTutorial();
+    const done = this.tutorialDismissResolve;
+    this.tutorialDismissResolve = null;
+    done?.();
+  }
+
+  private applySettingsPatch(partial: Partial<GameSettings>): void {
+    if (partial.colorBlindMode !== undefined || partial.fontScale !== undefined
+      || partial.theme !== undefined || partial.highContrast !== undefined) {
+      this.applyTheme();
+      return;
+    }
+    if (partial.masterVolume !== undefined || partial.sfxVolume !== undefined || partial.musicVolume !== undefined) {
+      this.audio.refresh();
+    }
+    if (partial.reducedMotion !== undefined) {
+      document.documentElement.style.setProperty('--reduced-motion', partial.reducedMotion ? '1' : '0');
+      document.body.classList.toggle('reduced-motion', partial.reducedMotion);
+    }
   }
 
   setCallbacks(cb: typeof this.callbacks): void {
@@ -225,7 +258,6 @@ export class UIManager {
     const scoreEl = this.overlay.querySelector('#hud-score');
     const timeEl = this.overlay.querySelector('#hud-time');
     const comboEl = this.overlay.querySelector('#hud-combo');
-    const comboWrap = this.overlay.querySelector('.hud-combo-wrap');
     const comboRing = this.overlay.querySelector('#hud-combo-ring') as SVGCircleElement | null;
     const phaseEl = this.overlay.querySelector('#hud-phase-fill') as HTMLElement;
     const powerupsEl = this.overlay.querySelector('#hud-powerups');
@@ -244,8 +276,12 @@ export class UIManager {
         timeEl.textContent = formatTime(stats.timeAlive);
       }
     }
-    if (comboEl) comboEl.textContent = stats.combo;
-    if (comboWrap) comboWrap.classList.toggle('active', !!stats.combo);
+    if (comboEl) comboEl.textContent = stats.combo ? stats.combo.replace(/^COMBO\s*/i, '') : '';
+    const comboWrap = this.overlay.querySelector('#hud-combo-wrap') ?? this.overlay.querySelector('.hud-combo-wrap');
+    if (comboWrap) {
+      comboWrap.classList.toggle('active', !!stats.combo);
+      comboWrap.setAttribute('aria-hidden', stats.combo ? 'false' : 'true');
+    }
     if (comboRing && stats.comboTimer !== undefined) {
       const circumference = 2 * Math.PI * 16;
       comboRing.style.strokeDasharray = `${circumference}`;
@@ -253,7 +289,8 @@ export class UIManager {
     }
     if (phaseEl) {
       phaseEl.style.width = `${stats.phase * 100}%`;
-      phaseEl.parentElement?.setAttribute('aria-valuenow', String(Math.round(stats.phase * 100)));
+      const phaseRow = this.overlay.querySelector('.hud-phase');
+      phaseRow?.classList.toggle('phase-ready', stats.phase >= 0.99);
     }
     if (powerupsEl) {
       const labels: Record<string, string> = { shield: 'S', magnet: 'M', overclock: 'O', chronos: 'C' };
@@ -549,10 +586,29 @@ export class UIManager {
       this.overlay.appendChild(overlay);
 
       let i = 0;
+      let timeoutId = 0;
+      let finished = false;
+
+      const finish = (): void => {
+        if (finished) return;
+        finished = true;
+        window.clearTimeout(timeoutId);
+        overlay.removeEventListener('click', onTapSkip);
+        overlay.remove();
+        resolve();
+      };
+
+      const onTapSkip = (e: MouseEvent): void => {
+        const target = e.target as HTMLElement;
+        if (target.closest('button, [data-action], .hud-pause')) return;
+        finish();
+      };
+      overlay.addEventListener('click', onTapSkip);
+
       const tick = (): void => {
+        if (finished) return;
         if (i >= steps.length) {
-          overlay.remove();
-          resolve();
+          finish();
           return;
         }
         const isFinal = i === steps.length - 1;
@@ -565,7 +621,7 @@ export class UIManager {
           this.showHypeCallout({ title: 'GO!', subtitle: 'SYNC NOW', tier: 2, color: 'cyan' });
         }
         i++;
-        setTimeout(tick, isFinal ? 450 : 650);
+        timeoutId = window.setTimeout(tick, isFinal ? 450 : 650);
       };
       tick();
     });
@@ -673,6 +729,7 @@ export class UIManager {
   /** Focused menu — three modes and essentials only. */
   private renderSimpleMenu(): void {
     const save = this.save.save;
+    const points = save.dataCredits.toLocaleString();
     const modes: { mode: GameMode; label: string; desc: string }[] = [
       { mode: 'endless', label: 'PLAY', desc: 'Survive as long as you can' },
       { mode: 'timeAttack60', label: '60 SECONDS', desc: 'Score as much as you can in one minute' },
@@ -681,11 +738,35 @@ export class UIManager {
 
     this.overlay.className = 'screen screen-menu screen-menu-simple';
     this.overlay.innerHTML = `
+      <div class="menu-drawer-backdrop hidden" data-action="close-menu" aria-hidden="true"></div>
+      <aside id="menu-drawer" class="menu-drawer" aria-hidden="true" aria-label="Game menu">
+        <p class="menu-drawer-balance">${msIcon('paid')} <strong>${points}</strong> points</p>
+        <button type="button" class="menu-drawer-item menu-shop-btn" data-action="upgrades">
+          <span class="drawer-item-line1">${msIcon('storefront')} Shop</span>
+          <span class="drawer-item-line2">${points} points</span>
+        </button>
+        <button type="button" class="menu-drawer-item" data-action="settings">
+          <span class="drawer-item-line1">${msIcon('settings')} Settings</span>
+          <span class="drawer-item-line2">Audio &amp; controls</span>
+        </button>
+        <button type="button" class="menu-drawer-item" data-action="help">
+          <span class="drawer-item-line1">${msIcon('help')} How to Play</span>
+          <span class="drawer-item-line2">Controls &amp; goals</span>
+        </button>
+      </aside>
       <div class="menu-shell">
-        <header class="menu-header">
-          <h1 class="menu-title">${GAME.TITLE}</h1>
-          <p class="menu-subtitle">${GAME.SUBTITLE}</p>
-        </header>
+        <div class="menu-toolbar">
+          <button type="button" class="menu-hamburger btn-icon" data-action="toggle-menu" aria-label="Open menu" aria-expanded="false" aria-controls="menu-drawer">
+            ${msIcon('menu')}
+          </button>
+          <header class="menu-header menu-header-compact">
+            <h1 class="menu-title">${GAME.TITLE}</h1>
+            <p class="menu-subtitle">${GAME.SUBTITLE}</p>
+          </header>
+          <div class="menu-coins-pill" title="Spend points in Shop">
+            ${msIcon('paid')}<span>${points}</span>
+          </div>
+        </div>
         <div class="mode-grid mode-grid-simple">
           ${modes.map(({ mode, label, desc }) => {
             const best = mode === 'timeAttack60' ? save.highScores.timeAttack60
@@ -700,17 +781,20 @@ export class UIManager {
             `;
           }).join('')}
         </div>
-        <nav class="menu-nav menu-nav-simple" aria-label="Menu">
-          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="upgrades" aria-label="Upgrades">
-            ⚡ Upgrades <span class="credits-badge">${save.dataCredits}◈</span>
-          </button>
-          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="settings" aria-label="Settings">⚙️ Settings</button>
-          <button type="button" class="btn btn-secondary menu-nav-btn" data-action="help" aria-label="How to play">❓ Help</button>
-        </nav>
       </div>
     `;
 
     this.bindMenuEvents();
+  }
+
+  private setMenuDrawerOpen(open: boolean): void {
+    const drawer = this.overlay.querySelector('#menu-drawer');
+    const backdrop = this.overlay.querySelector('.menu-drawer-backdrop');
+    const toggle = this.overlay.querySelector('[data-action="toggle-menu"]');
+    drawer?.classList.toggle('open', open);
+    backdrop?.classList.toggle('hidden', !open);
+    if (drawer) drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
 
   private renderMenu(): void {
@@ -889,6 +973,15 @@ export class UIManager {
       btn.addEventListener('click', () => {
         this.audio.playMenuConfirm();
         const action = (btn as HTMLElement).dataset.action;
+        if (action === 'toggle-menu') {
+          const drawer = this.overlay.querySelector('#menu-drawer');
+          this.setMenuDrawerOpen(!drawer?.classList.contains('open'));
+          return;
+        }
+        if (action === 'close-menu') {
+          this.setMenuDrawerOpen(false);
+          return;
+        }
         if (action === 'settings') this.showScreen('settings');
         else if (action === 'achievements') this.showScreen('achievements');
         else if (action === 'leaderboard') this.showScreen('leaderboard');
@@ -903,6 +996,9 @@ export class UIManager {
         else if (action === 'void') {
           this.showToast('Not yet.', 'info');
           this.showAIWhisper('You found something that is not ready.', 'glitch');
+        }
+        if (['settings', 'upgrades', 'help', 'achievements', 'leaderboard', 'daily', 'weekly', 'loadout', 'profile', 'investigation'].includes(action ?? '')) {
+          this.setMenuDrawerOpen(false);
         }
       });
       btn.addEventListener('mouseenter', () => this.audio.playMenuHover());
@@ -934,31 +1030,34 @@ export class UIManager {
           <span class="sr-only">Time</span>
           <span id="hud-time" class="hud-time" aria-live="polite">0:00</span>
         </div>
-        <button type="button" id="hud-pause" class="hud-pause btn-icon" aria-label="Pause game">⏸</button>
+        <button type="button" id="hud-pause" class="hud-pause btn-icon" aria-label="Pause game">${msIcon('pause')}</button>
       </div>
-      <div class="hud-bottom" role="group" aria-label="Combo and power">
-        <div class="hud-combo-wrap" aria-label="Combo multiplier">
+      <div class="hud-bottom" role="presentation">
+        <div class="hud-combo-wrap" id="hud-combo-wrap" aria-hidden="true">
+          <div class="combo-badge">
+            <span class="combo-badge-tag">COMBO</span>
+            <span id="hud-combo" class="combo-badge-mult"></span>
+          </div>
           <svg class="combo-ring" viewBox="0 0 36 36" aria-hidden="true">
             <circle class="combo-ring-bg" cx="18" cy="18" r="16" fill="none" stroke-width="2"/>
             <circle id="hud-combo-ring" class="combo-ring-fill" cx="18" cy="18" r="16" fill="none" stroke-width="2"/>
           </svg>
-          <span id="hud-combo" class="hud-combo" aria-live="polite" aria-atomic="true"></span>
         </div>
-        <div class="hud-speed-row" aria-label="Speed">
-          <span class="hud-label-sm">VEL</span>
-          <span id="hud-speed" class="hud-speed" aria-live="polite">×1.0</span>
-          <div class="speed-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="hud-speed-fill" class="speed-fill"></div></div>
+        <div class="hud-speed-row" aria-hidden="true">
+          <span class="hud-label-sm">${msIcon('speed')} VEL</span>
+          <span id="hud-speed" class="hud-speed">×1.0</span>
+          <div class="speed-bar"><div id="hud-speed-fill" class="speed-fill"></div></div>
         </div>
-        <div class="hud-phase" aria-label="Phase shift cooldown">
-          <span class="hud-label-sm">PHASE</span>
-          <div class="phase-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="hud-phase-fill" class="phase-fill"></div></div>
+        <div class="hud-phase" aria-hidden="true">
+          <span class="hud-label-sm phase-label">${msIcon('blur_on')} PHASE</span>
+          <div class="phase-bar"><div id="hud-phase-fill" class="phase-fill"></div></div>
         </div>
-        <div id="hud-powerups" class="hud-powerups"></div>
+        <div id="hud-powerups" class="hud-powerups" aria-hidden="true"></div>
       </div>
-      <div class="hud-hint${compact ? ' hud-hint-touch' : ''}">${hintText}</div>
+      <div class="hud-hint${compact ? ' hud-hint-touch' : ''}" aria-hidden="true">${hintText}</div>
       <div id="tutorial-overlay" class="tutorial-overlay hidden" aria-live="polite">
         <div class="tutorial-panel">
-          <h3>FIRST SYNC</h3>
+          <h3>How to Play</h3>
           ${compact ? `
           <p>Tap left or right side of the screen to change lanes</p>
           <p>Collect cyan shards — avoid red firewalls</p>
@@ -968,7 +1067,7 @@ export class UIManager {
           <p>Avoid red firewalls — they destroy your core</p>
           <p>SPACE / W = Phase shift through one firewall</p>
           `}
-          <p class="tutorial-dismiss">Move once to begin</p>
+          <button type="button" class="btn btn-primary" id="tutorial-start-btn">Start Run</button>
         </div>
       </div>
     `;
@@ -977,6 +1076,12 @@ export class UIManager {
       e.stopPropagation();
       this.audio.playMenuConfirm();
       this.callbacks.onPause?.();
+    });
+
+    this.overlay.querySelector('#tutorial-start-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.audio.playMenuConfirm();
+      this.completeRunTutorial();
     });
 
     if (!this.save.save.tutorialCompleted) {
@@ -1003,7 +1108,7 @@ export class UIManager {
     this.overlay.innerHTML = `
       <div class="modal panel panel-scroll animate-in">
         <h2 class="modal-title">UPGRADES</h2>
-        <p class="upgrade-credits">◈ ${credits} Data Credits</p>
+        <p class="upgrade-credits">${msIcon('paid')} ${credits.toLocaleString()} points</p>
         <p class="upgrade-hint">${affordable > 0
           ? `${affordable} upgrade${affordable > 1 ? 's' : ''} available now — pick one below`
           : 'Earn credits by collecting shards and completing runs'}</p>
@@ -1125,8 +1230,8 @@ export class UIManager {
       <div class="modal panel animate-in">
         <h2 class="modal-title">PAUSED</h2>
         <div class="modal-actions">
-          <button class="btn btn-primary" data-action="resume">▶ RESUME</button>
-          <button class="btn btn-secondary" data-action="quit">✕ QUIT</button>
+          <button class="btn btn-primary" data-action="resume">${msIcon('play_arrow')} RESUME</button>
+          <button class="btn btn-secondary" data-action="quit">${msIcon('close')} QUIT</button>
         </div>
       </div>
     `;
@@ -1159,8 +1264,8 @@ export class UIManager {
           <div class="stat-item"><span class="stat-label">Credits</span><span class="stat-value">+${data.creditsEarned ?? 0}◈</span></div>
         </div>
         <div class="modal-actions">
-          <button class="btn btn-primary" data-action="retry">↻ Play Again</button>
-          <button class="btn btn-secondary" data-action="menu">⌂ Menu</button>
+          <button class="btn btn-primary" data-action="retry">${msIcon('replay')} Play Again</button>
+          <button class="btn btn-secondary" data-action="menu">${msIcon('home')} Menu</button>
         </div>
       </div>
     `;
@@ -1944,11 +2049,17 @@ export class UIManager {
         position: relative;
         z-index: 2;
       }
-      .screen-hud { pointer-events: none; flex-direction: column; justify-content: space-between; padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
+      .screen-hud { pointer-events: none; flex-direction: column; justify-content: space-between; padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); user-select: none; -webkit-user-select: none; }
       .screen-hud .hud-top,
       .screen-hud .hud-bottom,
-      .screen-hud .hud-hint { pointer-events: auto; }
-      .screen-hud .hud-pause { pointer-events: auto; cursor: pointer; position: relative; z-index: 30; }
+      .screen-hud .hud-hint,
+      .screen-hud .hud-score,
+      .screen-hud .hud-time,
+      .screen-hud .hud-combo-wrap,
+      .screen-hud .hud-phase,
+      .screen-hud .hud-speed-row { pointer-events: none; }
+      .screen-hud .hud-pause,
+      .screen-hud .tutorial-panel .btn { pointer-events: auto; cursor: pointer; position: relative; z-index: 30; }
 
       #ui-flash {
         position: absolute; inset: 0; pointer-events: none; z-index: 20; opacity: 0;
@@ -2373,8 +2484,23 @@ export class UIManager {
       .challenge-bar { height: 4px; background: var(--color-voidLight); border-radius: 2px; overflow: hidden; margin-top: 4px; }
       .challenge-fill { height: 100%; background: var(--color-neonGold); box-shadow: 0 0 8px var(--color-neonGold); transition: width 0.15s linear; }
       .hud-bottom { width: 100%; padding-bottom: env(safe-area-inset-bottom, 8px); }
-      .hud-combo-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 36px; margin-bottom: 8px; opacity: 0.35; transition: opacity 0.2s; }
-      .hud-combo-wrap.active { opacity: 1; }
+      .hud-combo-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 40px; margin-bottom: 8px; opacity: 0.4; transition: opacity 0.25s, transform 0.2s; transform: scale(0.92); }
+      .hud-combo-wrap.active { opacity: 1; transform: scale(1); }
+      .combo-badge {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        min-width: 88px; padding: 6px 12px 6px 40px; border-radius: 10px;
+        background: linear-gradient(135deg, rgba(255,215,0,0.18), rgba(255,0,110,0.12));
+        border: 1px solid rgba(255,215,0,0.45);
+        box-shadow: 0 0 16px rgba(255,215,0,0.2);
+      }
+      .combo-badge-tag { font-size: 0.55rem; letter-spacing: 0.18em; color: var(--color-textSecondary); }
+      .combo-badge-mult { font-family: 'Orbitron', sans-serif; font-size: 1.05rem; font-weight: 800; color: var(--color-neonGold); text-shadow: 0 0 12px rgba(255,215,0,0.5); }
+      .hud-combo-wrap.active .combo-badge { animation: comboPop 0.35s ease-out; }
+      @keyframes comboPop { 0% { transform: scale(0.85); } 55% { transform: scale(1.08); } 100% { transform: scale(1); } }
+      body.reduced-motion .hud-combo-wrap.active .combo-badge { animation: none; }
+      .hud-phase.phase-ready .phase-fill { background: var(--color-neonCyan); box-shadow: 0 0 10px var(--color-neonCyan); }
+      .phase-label { display: inline-flex; align-items: center; gap: 2px; color: var(--color-textSecondary); }
+      .countdown-overlay { cursor: pointer; }
       .combo-ring { position: absolute; width: 36px; height: 36px; transform: rotate(-90deg); opacity: 0; transition: opacity 0.2s; }
       .hud-combo-wrap.active .combo-ring { opacity: 1; }
       .combo-ring-bg { stroke: rgba(255,255,255,0.08); }
@@ -2517,7 +2643,7 @@ export class UIManager {
       .credits-badge { color: var(--color-neonGold); font-weight: 700; margin-left: 4px; }
       .rank-badge { text-align: center; font-family: 'Orbitron', sans-serif; color: var(--color-neonViolet); font-size: 0.85rem; margin-bottom: 12px; font-weight: 600; }
 
-      .tutorial-overlay { position: absolute; inset: 0; background: rgba(10,14,26,0.75); display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 20; }
+      .tutorial-overlay { position: absolute; inset: 0; background: rgba(10,14,26,0.88); display: flex; align-items: center; justify-content: center; pointer-events: auto; z-index: 40; }
       .tutorial-overlay.hidden { display: none; }
       .tutorial-panel { background: rgba(18,24,41,0.95); border: 1px solid var(--color-neonCyan); border-radius: 12px; padding: 24px; max-width: 320px; text-align: center; }
       .tutorial-panel h3 { font-family: 'Orbitron', sans-serif; color: var(--color-neonCyan); margin-bottom: 12px; }
@@ -2781,9 +2907,54 @@ export class UIManager {
       }
 
       /* Simple menu — focused lane runner */
-      .screen-menu-simple .menu-shell { gap: 20px; padding-top: 8px; }
-      .screen-menu-simple .menu-header { text-align: center; margin-bottom: 4px; }
-      .screen-menu-simple .menu-subtitle { letter-spacing: 0.15em; font-size: 0.75rem; margin-bottom: 0; }
+      .ms-icon {
+        font-family: 'Material Symbols Outlined';
+        font-weight: normal; font-style: normal; font-size: 1em; line-height: 1;
+        letter-spacing: normal; text-transform: none; display: inline-block;
+        vertical-align: -0.15em; white-space: nowrap;
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .btn .ms-icon { margin-right: 0.35em; }
+      .menu-toolbar {
+        display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; width: 100%;
+      }
+      .menu-hamburger {
+        min-width: 48px; min-height: 48px; border-radius: 12px;
+        border: 1px solid rgba(0,240,255,0.35); background: rgba(0,240,255,0.08);
+        color: var(--color-neonCyan); display: flex; align-items: center; justify-content: center;
+      }
+      .menu-header-compact { text-align: left; min-width: 0; }
+      .menu-header-compact .menu-title { font-size: 1.15rem; margin: 0; }
+      .menu-coins-pill {
+        display: inline-flex; align-items: center; gap: 4px; padding: 8px 10px; border-radius: 999px;
+        background: rgba(255,215,0,0.12); border: 1px solid rgba(255,215,0,0.35);
+        color: var(--color-neonGold); font-weight: 700; font-size: 0.85rem; white-space: nowrap;
+      }
+      .menu-drawer-backdrop {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 50;
+      }
+      .menu-drawer-backdrop.hidden { display: none; }
+      .menu-drawer {
+        position: fixed; top: 0; left: 0; bottom: 0; width: min(86vw, 300px); z-index: 55;
+        background: rgba(14,18,32,0.98); border-right: 1px solid rgba(0,240,255,0.2);
+        padding: max(16px, env(safe-area-inset-top)) 16px 24px;
+        transform: translateX(-105%); transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.2, 1);
+        display: flex; flex-direction: column; gap: 10px;
+      }
+      .menu-drawer.open { transform: translateX(0); }
+      .menu-drawer-balance { font-size: 0.9rem; color: var(--color-textSecondary); margin-bottom: 8px; }
+      .menu-drawer-balance strong { color: var(--color-neonGold); }
+      .menu-drawer-item {
+        width: 100%; text-align: center; padding: 14px 12px; border-radius: 12px;
+        border: 1px solid rgba(0,240,255,0.25); background: rgba(0,240,255,0.06);
+        color: var(--color-textPrimary); cursor: pointer; min-height: 56px;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+      }
+      .menu-drawer-item:active { transform: scale(0.98); }
+      .drawer-item-line1 { font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 6px; }
+      .drawer-item-line2 { font-size: 0.78rem; color: var(--color-textSecondary); line-height: 1.2; word-break: break-word; }
+      .menu-shop-btn { border-color: rgba(255,215,0,0.35); background: rgba(255,215,0,0.08); }
+      .screen-menu-simple .menu-shell { gap: 16px; padding-top: 4px; position: relative; z-index: 2; }
       .mode-grid-simple { display: flex; flex-direction: column; gap: 12px; width: 100%; }
       .mode-card-simple {
         min-height: 72px; padding: 16px 18px; text-align: left;

@@ -27,6 +27,7 @@ export class AudioManager {
   init(): void {
     if (this.ctx) return;
     this.ctx = new AudioContext();
+    void this.ctx.resume();
     this.masterGain = this.ctx.createGain();
     this.sfxGain = this.ctx.createGain();
     this.musicGain = this.ctx.createGain();
@@ -62,7 +63,12 @@ export class AudioManager {
   }
 
   resume(): void {
-    this.ctx?.resume();
+    void this.ctx?.resume();
+  }
+
+  private ensureAudible(): void {
+    if (!this.ctx) this.init();
+    if (this.ctx?.state === 'suspended') void this.ctx.resume();
   }
 
   private playTone(
@@ -73,6 +79,7 @@ export class AudioManager {
     detune = 0,
     destination: GainNode | null = this.sfxGain,
   ): void {
+    this.ensureAudible();
     if (!this.ctx || !destination) return;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -88,6 +95,7 @@ export class AudioManager {
   }
 
   private playNoise(duration: number, volume = 0.15): void {
+    this.ensureAudible();
     if (!this.ctx || !this.sfxGain) return;
     const bufferSize = this.ctx.sampleRate * duration;
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
@@ -108,8 +116,12 @@ export class AudioManager {
     source.start();
   }
 
-  playMenuHover(): void { this.playTone(800, 0.05, 'sine', 0.15); }
+  playMenuHover(): void {
+    this.ensureAudible();
+    this.playTone(800, 0.05, 'sine', 0.15);
+  }
   playMenuConfirm(): void {
+    this.ensureAudible();
     this.playTone(523, 0.1, 'sine', 0.2);
     setTimeout(() => this.playTone(659, 0.1, 'sine', 0.2), 80);
     setTimeout(() => this.playTone(784, 0.15, 'sine', 0.25), 160);
@@ -266,6 +278,7 @@ export class AudioManager {
   }
 
   startMusic(): void {
+    this.ensureAudible();
     if (this.musicPlaying || !this.ctx || !this.musicGain) return;
     this.musicPlaying = true;
     this.musicPack = getMusicPack(this.save.save.unlocks.selectedMusicPack ?? 'synthwave');
