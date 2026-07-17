@@ -204,6 +204,7 @@ export class Game {
   }
 
   private pauseCore(): void {
+    this.input.cancelActiveTouch();
     this.isPaused = true;
     this.gameScene.setPaused(true);
     this.input.setEnabled(false);

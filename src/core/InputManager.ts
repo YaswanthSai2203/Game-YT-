@@ -13,6 +13,7 @@ export class InputManager {
   private lastLaneInput = 0;
   private readonly LANE_DEBOUNCE = 120;
   private ignoreInputUntil = 0;
+  private touchStartedOnUi = false;
   private readonly gameplayKeys = new Set([
     'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
     'KeyA', 'KeyD', 'KeyW', 'KeyS', 'Space',
@@ -40,6 +41,21 @@ export class InputManager {
     this.phaseActive = false;
     this.lastLaneInput = Date.now();
     this.ignoreInputUntil = Date.now() + 280;
+    this.touchStartedOnUi = true;
+  }
+
+  /** Call when opening pause — blocks the pause tap from counting as a lane change. */
+  cancelActiveTouch(): void {
+    this.touchStartedOnUi = true;
+    this.touchStartTime = 0;
+    this.ignoreInputUntil = Date.now() + 600;
+  }
+
+  private isUiTouchTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof Element)) return false;
+    return !!target.closest(
+      '#ui-overlay, #toast-stack, .modal-layer, .screen-pause, .hud-top, #hud-pause, button, [data-action], .menu-drawer, .menu-hamburger',
+    );
   }
 
   private shouldIgnoreInput(): boolean {
@@ -62,6 +78,7 @@ export class InputManager {
   }
 
   private pollGamepad(): void {
+    if (!this.enabled) return;
     const pads = navigator.getGamepads?.();
     if (!pads) return;
 
@@ -132,13 +149,22 @@ export class InputManager {
   private onTouchStart = (e: TouchEvent): void => {
     if (!this.enabled || e.touches.length === 0) return;
     const touch = e.touches[0];
+    this.touchStartedOnUi = this.isUiTouchTarget(e.target);
+    if (this.touchStartedOnUi) return;
     this.touchStartX = touch.clientX;
     this.touchStartY = touch.clientY;
     this.touchStartTime = Date.now();
   };
 
   private onTouchEnd = (e: TouchEvent): void => {
-    if (!this.enabled || e.changedTouches.length === 0 || this.shouldIgnoreInput()) return;
+    if (!this.enabled || e.changedTouches.length === 0 || this.shouldIgnoreInput()) {
+      this.touchStartedOnUi = false;
+      return;
+    }
+    if (this.touchStartedOnUi || this.isUiTouchTarget(e.target)) {
+      this.touchStartedOnUi = false;
+      return;
+    }
     const touch = e.changedTouches[0];
     const dx = touch.clientX - this.touchStartX;
     const dy = touch.clientY - this.touchStartY;
@@ -169,6 +195,7 @@ export class InputManager {
 
   private onPointerDown = (e: PointerEvent): void => {
     if (!this.enabled || e.pointerType === 'touch' || this.shouldIgnoreInput()) return;
+    if (this.isUiTouchTarget(e.target)) return;
     if (e.button === 0) {
       const screenThird = window.innerWidth / 3;
       if (e.clientX < screenThird) this.emitLane(-1);

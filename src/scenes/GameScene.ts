@@ -217,6 +217,7 @@ export class GameScene extends BaseScene {
 
   setPaused(value: boolean): void {
     if (value && !this.paused) {
+      this.freezePlayerLaneAtCurrentPosition();
       this.savedMotion = {
         playerLane: this.playerLane,
         playerTargetLane: this.playerTargetLane,
@@ -410,6 +411,26 @@ export class GameScene extends BaseScene {
 
     this.events.emit('game:start', { mode: this.config.mode });
     this.sentient.onRunStart();
+  }
+
+  /** Stop mid-lane lerp and snap to the lane nearest current X (used when pausing). */
+  private freezePlayerLaneAtCurrentPosition(): void {
+    let bestLane = this.playerLane;
+    let bestDist = Math.abs(this.playerX - this.laneCenters[bestLane]);
+    for (let i = 0; i < this.laneCenters.length; i++) {
+      const d = Math.abs(this.playerX - this.laneCenters[i]);
+      if (d < bestDist) {
+        bestDist = d;
+        bestLane = i;
+      }
+    }
+    this.playerLane = bestLane;
+    this.playerTargetLane = bestLane;
+    this.laneSwitchProgress = 1;
+    this.playerX = this.laneCenters[bestLane];
+    if (this.playerContainer) {
+      this.playerContainer.x = this.playerX;
+    }
   }
 
   private moveLane(direction: number): void {
