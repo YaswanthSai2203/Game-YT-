@@ -95,37 +95,6 @@ body.ui-neon-tactical .menu-tagline {
   letter-spacing: 0.12em;
 }
 
-body.ui-neon-tactical .sync-mini-bar {
-  margin: 16px auto 0;
-  max-width: 220px;
-}
-
-body.ui-neon-tactical .sync-mini-label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.68rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--color-textSecondary);
-  margin-bottom: 6px;
-}
-
-body.ui-neon-tactical .sync-mini-track {
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  overflow: hidden;
-  border: 1px solid rgba(0, 240, 255, 0.2);
-}
-
-body.ui-neon-tactical .sync-mini-fill {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--color-neonCyan), var(--color-neonViolet));
-  box-shadow: 0 0 12px rgba(0, 240, 255, 0.5);
-  transition: width 0.4s var(--ui-ease-out, ease-out);
-}
-
 /* ─── Featured mode card (PLAY) ─── */
 body.ui-neon-tactical .mode-card-featured {
   min-height: 88px !important;

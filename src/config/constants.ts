@@ -3,7 +3,7 @@ import type { GameMode } from '@/types';
 export const GAME = {
   TITLE: 'NEON PULSE',
   SUBTITLE: 'Dodge · Collect · Survive',
-  VERSION: '2.1.0',
+  VERSION: '2.1.1',
   SAVE_VERSION: 5,
   TARGET_FPS: 60,
   MAX_DELTA: 1 / 30,

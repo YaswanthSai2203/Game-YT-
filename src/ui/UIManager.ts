@@ -780,9 +780,6 @@ export class UIManager {
   private renderSimpleMenu(): void {
     const save = this.save.save;
     const points = save.dataCredits.toLocaleString();
-    const xpNext = SYNC.XP_PER_LEVEL[save.profile.syncLevel] ?? 99999;
-    const xpPrev = SYNC.XP_PER_LEVEL[save.profile.syncLevel - 1] ?? 0;
-    const xpProgress = Math.min(100, Math.max(0, ((save.profile.syncXP - xpPrev) / (xpNext - xpPrev)) * 100));
     const modes: { mode: GameMode; label: string; desc: string; featured?: boolean; icon?: string }[] = [
       { mode: 'endless', label: 'PLAY', desc: 'Survive as long as you can', featured: true, icon: 'play_arrow' },
       { mode: 'timeAttack60', label: '60 SECONDS', desc: 'Score as much as you can in one minute', icon: 'timer' },
@@ -821,15 +818,6 @@ export class UIManager {
           <p class="menu-eyebrow">Sync Hub</p>
           <h1 class="menu-title-hero">${GAME.TITLE}</h1>
           <p class="menu-tagline">${GAME.SUBTITLE}</p>
-          <div class="sync-mini-bar">
-            <div class="sync-mini-label">
-              <span>Sync Lv.${save.profile.syncLevel}</span>
-              <span>${save.profile.syncXP} XP</span>
-            </div>
-            <div class="sync-mini-track" role="progressbar" aria-valuenow="${Math.round(xpProgress)}" aria-valuemin="0" aria-valuemax="100">
-              <div class="sync-mini-fill" style="width:${xpProgress}%"></div>
-            </div>
-          </div>
         </header>
         <div class="mode-grid mode-grid-simple mode-grid-v2">
           ${modes.map(({ mode, label, desc, featured, icon }) => {
