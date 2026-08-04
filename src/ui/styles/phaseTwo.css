@@ -1,0 +1,358 @@
+/**
+ * NEON PULSE — Phase 2: visible Sync Hub hero, animated grid, game-over hero score
+ */
+
+/* ─── Shared Sync Glass panel (modalKit) ─── */
+body.ui-neon-tactical .sync-panel {
+  background: var(--ui-glass-panel, rgba(18, 24, 41, 0.94));
+  border: 1px solid var(--ui-glass-border, rgba(0, 240, 255, 0.35));
+  box-shadow: var(--ui-glass-shadow, 0 12px 40px rgba(0, 0, 0, 0.5));
+  border-radius: 16px;
+  padding: 24px 20px;
+  max-width: 420px;
+  width: calc(100% - 32px);
+  margin: 0 auto;
+}
+
+body.ui-neon-tactical .sync-modal-actions {
+  margin-top: 20px;
+}
+
+/* ─── Animated grid menu backdrop (CSS only, GPU-friendly) ─── */
+body.ui-neon-tactical .sync-grid-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  opacity: 0.55;
+}
+
+body.ui-neon-tactical .sync-grid-bg::before,
+body.ui-neon-tactical .sync-grid-bg::after {
+  content: '';
+  position: absolute;
+  inset: -50% 0 0;
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.07) 1px, transparent 1px);
+  background-size: 48px 48px;
+  transform: perspective(500px) rotateX(58deg);
+  transform-origin: center top;
+}
+
+body.ui-neon-tactical .sync-grid-bg::after {
+  opacity: 0.45;
+  background-size: 48px 80px;
+  animation: sync-grid-scroll 14s linear infinite;
+}
+
+@keyframes sync-grid-scroll {
+  from { background-position: 0 0; }
+  to { background-position: 0 80px; }
+}
+
+body.reduced-motion.ui-neon-tactical .sync-grid-bg::after {
+  animation: none;
+}
+
+body.ui-neon-tactical .screen-menu-simple.sync-hub-v2 {
+  background: linear-gradient(180deg, rgba(10, 14, 26, 0.72) 0%, rgba(10, 14, 26, 0.94) 45%, rgba(10, 14, 26, 0.98) 100%);
+}
+
+/* ─── Menu hero ─── */
+body.ui-neon-tactical .menu-hero {
+  text-align: center;
+  padding: 8px 0 20px;
+  position: relative;
+  z-index: 1;
+}
+
+body.ui-neon-tactical .menu-eyebrow {
+  font-size: 0.65rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--color-neonViolet);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+body.ui-neon-tactical .menu-title-hero {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(2rem, 9vw, 2.75rem);
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: 0.06em;
+  color: var(--color-textPrimary);
+  text-shadow: 0 0 32px rgba(0, 240, 255, 0.45), 0 0 8px rgba(0, 240, 255, 0.3);
+  margin: 0;
+}
+
+body.ui-neon-tactical .menu-tagline {
+  font-size: 0.9rem;
+  color: var(--color-textSecondary);
+  margin-top: 8px;
+  letter-spacing: 0.12em;
+}
+
+body.ui-neon-tactical .sync-mini-bar {
+  margin: 16px auto 0;
+  max-width: 220px;
+}
+
+body.ui-neon-tactical .sync-mini-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-textSecondary);
+  margin-bottom: 6px;
+}
+
+body.ui-neon-tactical .sync-mini-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  border: 1px solid rgba(0, 240, 255, 0.2);
+}
+
+body.ui-neon-tactical .sync-mini-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--color-neonCyan), var(--color-neonViolet));
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.5);
+  transition: width 0.4s var(--ui-ease-out, ease-out);
+}
+
+/* ─── Featured mode card (PLAY) ─── */
+body.ui-neon-tactical .mode-card-featured {
+  min-height: 88px !important;
+  border-color: rgba(0, 240, 255, 0.55) !important;
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.14) 0%, rgba(18, 24, 41, 0.95) 55%) !important;
+  box-shadow: 0 0 28px rgba(0, 240, 255, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  position: relative;
+  overflow: hidden;
+}
+
+body.ui-neon-tactical .mode-card-featured::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.12), transparent);
+  animation: card-shine 4s ease-in-out infinite;
+}
+
+@keyframes card-shine {
+  0%, 100% { left: -100%; }
+  50% { left: 140%; }
+}
+
+body.reduced-motion.ui-neon-tactical .mode-card-featured::before {
+  display: none;
+}
+
+body.ui-neon-tactical .mode-card-featured .mode-label {
+  font-size: 1.25rem !important;
+  color: var(--color-neonCyan);
+}
+
+body.ui-neon-tactical .mode-card-icon {
+  float: right;
+  font-size: 1.5rem;
+  opacity: 0.85;
+  line-height: 1;
+}
+
+body.ui-neon-tactical .mode-grid-v2 {
+  gap: 14px !important;
+}
+
+/* ─── Splash v2 ─── */
+body.ui-neon-tactical .screen-splash-v2 .splash-title {
+  font-size: clamp(2.2rem, 12vw, 3.5rem);
+  letter-spacing: 0.14em;
+}
+
+body.ui-neon-tactical .screen-splash-v2 .splash-scanline {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 240, 255, 0.02) 2px,
+    rgba(0, 240, 255, 0.02) 4px
+  );
+  animation: scanline-drift 8s linear infinite;
+}
+
+@keyframes scanline-drift {
+  from { transform: translateY(0); }
+  to { transform: translateY(4px); }
+}
+
+body.reduced-motion.ui-neon-tactical .splash-scanline {
+  animation: none;
+}
+
+body.ui-neon-tactical .splash-tap-hint {
+  margin-top: 28px;
+  font-size: 0.75rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-textSecondary);
+  animation: pulse-hint 2s ease-in-out infinite;
+}
+
+@keyframes pulse-hint {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+/* ─── Game over hero ─── */
+body.ui-neon-tactical .gameover-panel-v2 {
+  text-align: center;
+  max-width: 400px;
+  border-color: rgba(0, 240, 255, 0.45);
+}
+
+body.ui-neon-tactical .gameover-eyebrow {
+  font-size: 0.7rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-neonViolet);
+  margin-bottom: 4px;
+}
+
+body.ui-neon-tactical .gameover-score-hero {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(2.5rem, 14vw, 3.5rem);
+  font-weight: 900;
+  line-height: 1;
+  color: var(--color-neonCyan);
+  text-shadow: 0 0 40px rgba(0, 240, 255, 0.5);
+  margin: 8px 0 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+body.ui-neon-tactical .gameover-score-hero.is-record {
+  color: var(--color-neonGold);
+  text-shadow: 0 0 40px rgba(255, 215, 0, 0.55);
+}
+
+body.ui-neon-tactical .gameover-stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+body.ui-neon-tactical .hero-metric {
+  padding: 10px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+body.ui-neon-tactical .hero-metric-label {
+  display: block;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-textSecondary);
+  margin-bottom: 4px;
+}
+
+body.ui-neon-tactical .hero-metric-value {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+body.ui-neon-tactical .hero-metric-cyan .hero-metric-value { color: var(--color-neonCyan); }
+body.ui-neon-tactical .hero-metric-gold .hero-metric-value { color: var(--color-neonGold); }
+body.ui-neon-tactical .hero-metric-violet .hero-metric-value { color: var(--color-neonViolet); }
+
+body.ui-neon-tactical .new-high-badge {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-void);
+  background: linear-gradient(90deg, var(--color-neonGold), #ffaa00);
+  margin-bottom: 12px;
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
+}
+
+/* ─── Pause / settings modal header ─── */
+body.ui-neon-tactical .sync-modal-header {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+body.ui-neon-tactical .sync-modal-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 12px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 240, 255, 0.1);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  font-size: 1.6rem;
+  color: var(--color-neonCyan);
+}
+
+body.ui-neon-tactical .sync-panel .modal-title {
+  margin-bottom: 0;
+}
+
+body.ui-neon-tactical .settings-section-label {
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-neonCyan);
+  margin: 16px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+}
+
+body.ui-neon-tactical .settings-section-label:first-child {
+  margin-top: 0;
+}
+
+/* ─── HUD lane hint pill (bottom) ─── */
+body.ui-neon-tactical .hud-lane-hint {
+  position: absolute;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-textSecondary);
+  background: rgba(10, 14, 26, 0.65);
+  border: 1px solid rgba(0, 240, 255, 0.15);
+  pointer-events: none;
+  z-index: 5;
+}
+
+body.ui-neon-tactical .hud-compact .hud-hint-touch {
+  display: none;
+}
+
+body.ui-neon-tactical .hud-compact .hud-lane-hint {
+  display: block;
+}

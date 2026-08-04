@@ -20,6 +20,13 @@ import {
   canShowHypeVignette,
   shouldUseHypeToast,
 } from '@/ui/uiEffects';
+import {
+  bindModalActions,
+  heroMetric,
+  modalActions,
+  modalTitle,
+  syncPanel,
+} from '@/ui/modalKit';
 import { SaveManager } from '@/core/SaveManager';
 import { AchievementManager } from '@/core/AchievementManager';
 import { UpgradeManager } from '@/core/UpgradeManager';
@@ -756,13 +763,15 @@ export class UIManager {
     const syncComplete = this.save.save.worldMemory.gridSyncComplete;
     const title = syncComplete ? 'THE GRID' : GAME.TITLE;
     const subtitle = syncComplete ? 'YOU ARE PART OF THE LATTICE' : GAME.SUBTITLE;
-    this.overlay.className = 'screen screen-splash';
+    this.overlay.className = 'screen screen-splash screen-splash-v2';
     this.overlay.innerHTML = `
       <div class="splash-content animate-in">
         <div class="splash-glow"></div>
+        <div class="splash-scanline" aria-hidden="true"></div>
         <h1 class="splash-title">${title}</h1>
         <p class="splash-subtitle">${subtitle}</p>
         <div class="splash-pulse"></div>
+        <p class="splash-tap-hint">Tap to sync</p>
       </div>
     `;
   }
@@ -771,14 +780,18 @@ export class UIManager {
   private renderSimpleMenu(): void {
     const save = this.save.save;
     const points = save.dataCredits.toLocaleString();
-    const modes: { mode: GameMode; label: string; desc: string }[] = [
-      { mode: 'endless', label: 'PLAY', desc: 'Survive as long as you can' },
-      { mode: 'timeAttack60', label: '60 SECONDS', desc: 'Score as much as you can in one minute' },
-      { mode: 'practice', label: 'PRACTICE', desc: 'No death — learn the controls' },
+    const xpNext = SYNC.XP_PER_LEVEL[save.profile.syncLevel] ?? 99999;
+    const xpPrev = SYNC.XP_PER_LEVEL[save.profile.syncLevel - 1] ?? 0;
+    const xpProgress = Math.min(100, Math.max(0, ((save.profile.syncXP - xpPrev) / (xpNext - xpPrev)) * 100));
+    const modes: { mode: GameMode; label: string; desc: string; featured?: boolean; icon?: string }[] = [
+      { mode: 'endless', label: 'PLAY', desc: 'Survive as long as you can', featured: true, icon: 'play_arrow' },
+      { mode: 'timeAttack60', label: '60 SECONDS', desc: 'Score as much as you can in one minute', icon: 'timer' },
+      { mode: 'practice', label: 'PRACTICE', desc: 'No death — learn the controls', icon: 'school' },
     ];
 
-    this.overlay.className = 'screen screen-menu screen-menu-simple sync-hub';
+    this.overlay.className = 'screen screen-menu screen-menu-simple sync-hub sync-hub-v2';
     this.overlay.innerHTML = `
+      <div class="sync-grid-bg" aria-hidden="true"></div>
       <div class="menu-drawer-backdrop hidden" data-action="close-menu" aria-hidden="true"></div>
       <aside id="menu-drawer" class="menu-drawer" aria-hidden="true" aria-label="Game menu">
         <p class="menu-drawer-balance">${msIcon('paid')} <strong>${points}</strong> points</p>
@@ -800,21 +813,33 @@ export class UIManager {
           <button type="button" class="menu-hamburger btn-icon" data-action="toggle-menu" aria-label="Open menu" aria-expanded="false" aria-controls="menu-drawer">
             ${msIcon('menu')}
           </button>
-          <header class="menu-header menu-header-compact">
-            <h1 class="menu-title">${GAME.TITLE}</h1>
-            <p class="menu-subtitle">${GAME.SUBTITLE}</p>
-          </header>
           <div class="menu-coins-pill" title="Spend points in Shop">
             ${msIcon('paid')}<span>${points}</span>
           </div>
         </div>
-        <div class="mode-grid mode-grid-simple">
-          ${modes.map(({ mode, label, desc }) => {
+        <header class="menu-hero">
+          <p class="menu-eyebrow">Sync Hub</p>
+          <h1 class="menu-title-hero">${GAME.TITLE}</h1>
+          <p class="menu-tagline">${GAME.SUBTITLE}</p>
+          <div class="sync-mini-bar">
+            <div class="sync-mini-label">
+              <span>Sync Lv.${save.profile.syncLevel}</span>
+              <span>${save.profile.syncXP} XP</span>
+            </div>
+            <div class="sync-mini-track" role="progressbar" aria-valuenow="${Math.round(xpProgress)}" aria-valuemin="0" aria-valuemax="100">
+              <div class="sync-mini-fill" style="width:${xpProgress}%"></div>
+            </div>
+          </div>
+        </header>
+        <div class="mode-grid mode-grid-simple mode-grid-v2">
+          ${modes.map(({ mode, label, desc, featured, icon }) => {
             const best = mode === 'timeAttack60' ? save.highScores.timeAttack60
               : mode === 'practice' ? 0
               : save.highScores.endless;
+            const cardClass = ['mode-card', 'mode-card-simple', featured ? 'mode-card-featured' : ''].filter(Boolean).join(' ');
             return `
-              <button type="button" class="mode-card mode-card-simple" data-mode="${mode}" aria-label="Start ${label}">
+              <button type="button" class="${cardClass}" data-mode="${mode}" aria-label="Start ${label}">
+                ${icon ? `<span class="mode-card-icon" aria-hidden="true">${msIcon(icon)}</span>` : ''}
                 <span class="mode-label">${label}</span>
                 <span class="mode-desc">${desc}</span>
                 ${best > 0 ? `<span class="mode-best">Best: ${formatScore(best)}</span>` : ''}
@@ -1096,6 +1121,7 @@ export class UIManager {
         <div id="hud-powerups" class="hud-powerups" aria-hidden="true"></div>
       </div>
       <div class="hud-hint${compact ? ' hud-hint-touch' : ''}" aria-hidden="true">${hintText}</div>
+      ${compact ? '<div class="hud-lane-hint" aria-hidden="true">Tap edges · center to phase</div>' : ''}
       <div id="tutorial-overlay" class="tutorial-overlay hidden" aria-live="polite">
         <div class="tutorial-panel">
           <h3>How to Play</h3>
@@ -1306,28 +1332,29 @@ export class UIManager {
     pauseEl.className = 'modal-layer screen-pause';
     pauseEl.style.pointerEvents = 'auto';
     pauseEl.dataset.pauseKind = options.kind;
-    pauseEl.innerHTML = `
-      <div class="modal panel animate-in">
-        <h2 class="modal-title">${options.title}</h2>
-        ${options.subtitle ? `<p class="pause-subtitle">${options.subtitle}</p>` : ''}
-        <div class="modal-actions">
-          <button type="button" class="btn btn-primary" data-action="resume">${msIcon('play_arrow')} Resume</button>
-          <button type="button" class="btn btn-secondary" data-action="quit">${msIcon('logout')} Quit</button>
-        </div>
-      </div>
-    `;
+    const icon = options.kind === 'background' ? 'visibility' : 'pause_circle';
+    pauseEl.innerHTML = syncPanel(`
+      ${modalTitle(options.title, icon)}
+      ${options.subtitle ? `<p class="pause-subtitle">${options.subtitle}</p>` : ''}
+      ${modalActions([
+        { action: 'resume', label: 'Resume', icon: 'play_arrow', variant: 'primary' },
+        { action: 'quit', label: 'Quit', icon: 'logout', variant: 'secondary' },
+      ])}
+    `);
     this.overlay.appendChild(pauseEl);
     this.pauseModalEl = pauseEl;
 
-    pauseEl.querySelector('[data-action="resume"]') && bindTap(pauseEl.querySelector('[data-action="resume"]')!, () => {
-      this.audio.playMenuConfirm();
-      this.dismissPauseModal();
-      this.callbacks.onResume?.();
-    });
-    pauseEl.querySelector('[data-action="quit"]') && bindTap(pauseEl.querySelector('[data-action="quit"]')!, () => {
-      this.audio.playMenuConfirm();
-      this.dismissPauseModal();
-      this.callbacks.onQuit?.();
+    bindModalActions(pauseEl, {
+      resume: () => {
+        this.audio.playMenuConfirm();
+        this.dismissPauseModal();
+        this.callbacks.onResume?.();
+      },
+      quit: () => {
+        this.audio.playMenuConfirm();
+        this.dismissPauseModal();
+        this.callbacks.onQuit?.();
+      },
     });
   }
 
@@ -1336,43 +1363,45 @@ export class UIManager {
     creditsEarned?: number;
   }): void {
     this.overlay.className = 'screen screen-gameover modal-overlay';
-    this.overlay.innerHTML = `
-      <div class="modal panel animate-in gameover-panel gameover-panel-simple">
-        <h2 class="modal-title">${data.score > 0 ? 'Run Complete' : 'Game Over'}</h2>
-        ${data.newHighScore ? '<div class="new-high-score">★ New best score ★</div>' : ''}
-        <div class="stats-grid stats-grid-simple">
-          <div class="stat-item"><span class="stat-label">Score</span><span class="stat-value">${formatScore(data.score)}</span></div>
-          <div class="stat-item"><span class="stat-label">Shards</span><span class="stat-value">${data.shards}</span></div>
-          <div class="stat-item"><span class="stat-label">Time</span><span class="stat-value">${formatTime(data.timeAlive)}</span></div>
-          <div class="stat-item"><span class="stat-label">Credits</span><span class="stat-value">+${data.creditsEarned ?? 0}</span></div>
-        </div>
-        <div class="modal-actions">
-          <button class="btn btn-primary" data-action="retry">${msIcon('replay')} Play Again</button>
-          <button class="btn btn-secondary" data-action="menu">${msIcon('home')} Menu</button>
-        </div>
+    const title = data.score > 0 ? 'Run Complete' : 'Game Over';
+    const scoreClass = data.newHighScore ? 'gameover-score-hero is-record' : 'gameover-score-hero';
+    this.overlay.innerHTML = syncPanel(`
+      <p class="gameover-eyebrow">${title}</p>
+      ${data.newHighScore ? '<div class="new-high-badge">★ New best score ★</div>' : ''}
+      <div class="${scoreClass}">${formatScore(data.score)}</div>
+      <div class="gameover-stats-row">
+        ${heroMetric('Shards', String(data.shards), 'cyan')}
+        ${heroMetric('Time', formatTime(data.timeAlive), 'violet')}
+        ${heroMetric('Credits', `+${data.creditsEarned ?? 0}`, 'gold')}
       </div>
-    `;
+      ${modalActions([
+        { action: 'retry', label: 'Play Again', icon: 'replay', variant: 'primary' },
+        { action: 'menu', label: 'Menu', icon: 'home', variant: 'secondary' },
+      ])}
+    `, 'gameover-panel gameover-panel-simple gameover-panel-v2');
 
     this.bindGameOverActions(data);
   }
 
   private bindGameOverActions(data: RunStats): void {
-    this.overlay.querySelector('[data-action="retry"]')?.addEventListener('click', () => {
-      this.audio.playMenuConfirm();
-      this.callbacks.onRetry?.();
-    });
-    this.overlay.querySelector('[data-action="menu"]')?.addEventListener('click', () => {
-      this.audio.playMenuConfirm();
-      this.callbacks.onQuit?.();
-    });
-    this.overlay.querySelector('[data-action="share"]')?.addEventListener('click', () => {
-      const text = `I scored ${formatScore(data.score)} in NEON PULSE! Can you beat me?`;
-      if (navigator.share) {
-        navigator.share({ title: 'NEON PULSE', text }).catch(() => {});
-      } else {
-        navigator.clipboard?.writeText(text);
-        this.showToast('Score copied to clipboard!');
-      }
+    bindModalActions(this.overlay, {
+      retry: () => {
+        this.audio.playMenuConfirm();
+        this.callbacks.onRetry?.();
+      },
+      menu: () => {
+        this.audio.playMenuConfirm();
+        this.callbacks.onQuit?.();
+      },
+      share: () => {
+        const text = `I scored ${formatScore(data.score)} in NEON PULSE! Can you beat me?`;
+        if (navigator.share) {
+          navigator.share({ title: 'NEON PULSE', text }).catch(() => {});
+        } else {
+          navigator.clipboard?.writeText(text);
+          this.showToast('Score copied to clipboard!');
+        }
+      },
     });
   }
 
@@ -1458,17 +1487,19 @@ export class UIManager {
   private renderSettings(): void {
     const s = this.save.settings;
     this.overlay.className = 'screen screen-settings modal-overlay';
-    this.overlay.innerHTML = UI.SIMPLE_MODE ? `
-      <div class="modal panel panel-scroll animate-in">
-        <h2 class="modal-title">Settings</h2>
-        <div class="settings-group">
-          ${this.sliderRow('Master Volume', 'masterVolume', s.masterVolume)}
-          ${this.sliderRow('Music Volume', 'musicVolume', s.musicVolume)}
-          ${this.toggleRow('Reduced Motion', 'reducedMotion', s.reducedMotion)}
-        </div>
-        <button class="btn btn-primary" data-action="back">← Back</button>
+    this.overlay.innerHTML = UI.SIMPLE_MODE ? syncPanel(`
+      ${modalTitle('Settings', 'tune')}
+      <p class="settings-section-label">Audio</p>
+      <div class="settings-group">
+        ${this.sliderRow('Master Volume', 'masterVolume', s.masterVolume)}
+        ${this.sliderRow('Music Volume', 'musicVolume', s.musicVolume)}
       </div>
-    ` : `
+      <p class="settings-section-label">Accessibility</p>
+      <div class="settings-group">
+        ${this.toggleRow('Reduced Motion', 'reducedMotion', s.reducedMotion)}
+      </div>
+      ${modalActions([{ action: 'back', label: 'Back', icon: 'arrow_back', variant: 'primary' }])}
+    `, 'panel-scroll') : `
       <div class="modal panel panel-scroll animate-in">
         <h2 class="modal-title">SETTINGS</h2>
         <div class="settings-group">
@@ -1541,10 +1572,13 @@ export class UIManager {
       });
     });
 
-    this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
-      this.audio.playMenuConfirm();
-      this.showScreen('menu');
-    });
+    const backBtn = this.overlay.querySelector('[data-action="back"]');
+    if (backBtn) {
+      bindTap(backBtn, () => {
+        this.audio.playMenuConfirm();
+        this.showScreen('menu');
+      });
+    }
   }
 
   private renderAchievements(): void {

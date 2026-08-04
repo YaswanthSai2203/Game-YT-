@@ -6,6 +6,7 @@ import {
   hydrateSaveFromPlayables,
 } from '@/platform/playables';
 import '@/ui/styles/neonTactical.css';
+import '@/ui/styles/phaseTwo.css';
 import '@fontsource/orbitron/700.css';
 import '@fontsource/orbitron/800.css';
 import '@fontsource/orbitron/900.css';
