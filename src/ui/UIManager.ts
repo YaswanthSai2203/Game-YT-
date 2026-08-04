@@ -14,6 +14,7 @@ import { LEADERBOARD } from '@/config/leaderboardConfig';
 import { formatScore, formatTime } from '@/utils/math';
 import { isCompactUI } from '@/utils/uiMode';
 import { msIcon, pointsLabel } from '@/utils/icons';
+import { bindImmediatePress, bindTap } from '@/utils/tap';
 import { SaveManager } from '@/core/SaveManager';
 import { AchievementManager } from '@/core/AchievementManager';
 import { UpgradeManager } from '@/core/UpgradeManager';
@@ -595,16 +596,18 @@ export class UIManager {
         finished = true;
         window.clearTimeout(timeoutId);
         overlay.removeEventListener('click', onTapSkip);
+        overlay.removeEventListener('pointerup', onTapSkip);
         overlay.remove();
         resolve();
       };
 
-      const onTapSkip = (e: MouseEvent): void => {
+      const onTapSkip = (e: Event): void => {
         const target = e.target as HTMLElement;
         if (target.closest('button, [data-action], .hud-pause')) return;
         finish();
       };
       overlay.addEventListener('click', onTapSkip);
+      overlay.addEventListener('pointerup', onTapSkip);
 
       const tick = (): void => {
         if (finished) return;
@@ -962,7 +965,7 @@ export class UIManager {
 
   private bindMenuEvents(): void {
     this.overlay.querySelectorAll('.mode-card').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      bindTap(btn, () => {
         this.audio.playMenuConfirm();
         const mode = (btn as HTMLElement).dataset.mode as GameMode;
         this.callbacks.onStartGame?.(mode);
@@ -971,7 +974,7 @@ export class UIManager {
     });
 
     this.overlay.querySelectorAll('[data-action]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      bindTap(btn, () => {
         this.audio.playMenuConfirm();
         const action = (btn as HTMLElement).dataset.action;
         if (action === 'toggle-menu') {
@@ -1074,20 +1077,22 @@ export class UIManager {
     `;
 
     const pauseBtn = this.overlay.querySelector('#hud-pause');
-    const requestPause = (e: Event) => {
-      e.stopPropagation();
-      if ('preventDefault' in e) e.preventDefault();
-      this.audio.playMenuConfirm();
-      this.callbacks.onPause?.();
-    };
-    pauseBtn?.addEventListener('pointerdown', requestPause);
-    pauseBtn?.addEventListener('touchstart', requestPause, { passive: false });
+    if (pauseBtn) {
+      bindImmediatePress(pauseBtn, () => {
+        this.events.emit('input:cancel-touch', {});
+        this.audio.playMenuConfirm();
+        this.callbacks.onPause?.();
+      });
+    }
 
-    this.overlay.querySelector('#tutorial-start-btn')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.audio.playMenuConfirm();
-      this.completeRunTutorial();
-    });
+    const tutorialStart = this.overlay.querySelector('#tutorial-start-btn');
+    if (tutorialStart) {
+      bindTap(tutorialStart, (e) => {
+        e.stopPropagation();
+        this.audio.playMenuConfirm();
+        this.completeRunTutorial();
+      });
+    }
 
     if (!this.save.save.tutorialCompleted) {
       this.showTutorial();
@@ -1277,12 +1282,12 @@ export class UIManager {
     this.overlay.appendChild(pauseEl);
     this.pauseModalEl = pauseEl;
 
-    pauseEl.querySelector('[data-action="resume"]')?.addEventListener('click', () => {
+    pauseEl.querySelector('[data-action="resume"]') && bindTap(pauseEl.querySelector('[data-action="resume"]')!, () => {
       this.audio.playMenuConfirm();
       this.dismissPauseModal();
       this.callbacks.onResume?.();
     });
-    pauseEl.querySelector('[data-action="quit"]')?.addEventListener('click', () => {
+    pauseEl.querySelector('[data-action="quit"]') && bindTap(pauseEl.querySelector('[data-action="quit"]')!, () => {
       this.audio.playMenuConfirm();
       this.dismissPauseModal();
       this.callbacks.onQuit?.();
@@ -2090,6 +2095,11 @@ export class UIManager {
         position: relative;
         z-index: 2;
       }
+      .mode-card, .btn, .menu-hamburger, .hud-pause, .menu-drawer-item {
+        touch-action: manipulation;
+        -webkit-user-select: none;
+        user-select: none;
+      }
       .screen-hud { pointer-events: none; flex-direction: column; justify-content: space-between; padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); user-select: none; -webkit-user-select: none; }
       .screen-hud .hud-top {
         pointer-events: auto;
@@ -2156,7 +2166,8 @@ export class UIManager {
 
       .countdown-overlay {
         position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-        pointer-events: none; z-index: 15; background: rgba(10, 14, 26, 0.35);
+        pointer-events: auto; z-index: 15; background: rgba(10, 14, 26, 0.35);
+        touch-action: manipulation;
       }
       .countdown-num {
         font-family: 'Orbitron', sans-serif; font-size: 5rem; font-weight: 900;

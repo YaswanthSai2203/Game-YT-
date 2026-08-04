@@ -75,6 +75,7 @@ export class Game {
     this.analytics = new AnalyticsManager(this.events);
     this.input = new InputManager(this.events);
     this.input.setSensitivity(this.save.settings.controlSensitivity);
+    this.events.on('input:cancel-touch', () => this.input.cancelActiveTouch());
 
     this.scenes = new SceneManager(this.app, this.events);
     this.gameScene = new GameScene(this.events, this.audio, this.save, this.achievements, this.upgrades);
@@ -302,6 +303,7 @@ export class Game {
   }
 
   private setCanvasVisible(visible: boolean): void {
+    document.body.classList.toggle('gameplay-active', visible);
     this.app.canvas.style.visibility = visible ? 'visible' : 'hidden';
     // Input is handled on window — canvas must never steal menu/HUD clicks.
     this.app.canvas.style.pointerEvents = 'none';

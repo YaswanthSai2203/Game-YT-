@@ -57,7 +57,7 @@ export class InputManager {
   private isUiTouchTarget(target: EventTarget | null): boolean {
     if (!(target instanceof Element)) return false;
     return !!target.closest(
-      '#ui-overlay, #toast-stack, .modal-layer, .screen-pause, .hud-top, #hud-pause, button, [data-action], .menu-drawer, .menu-hamburger',
+      '#toast-stack, .modal-layer, .screen-pause, .hud-top, #hud-pause, button, [data-action], .menu-drawer, .menu-hamburger, .tutorial-overlay',
     );
   }
 
@@ -162,7 +162,10 @@ export class InputManager {
     const touch = e.touches[0];
     this.touchStartedOnUi =
       this.isUiTouchTarget(e.target) || this.isInHudDeadZone(touch.clientY);
-    if (this.touchStartedOnUi) return;
+    if (this.touchStartedOnUi) {
+      this.touchStartTime = 0;
+      return;
+    }
     this.touchStartX = touch.clientX;
     this.touchStartY = touch.clientY;
     this.touchStartTime = Date.now();
@@ -171,15 +174,22 @@ export class InputManager {
   private onTouchEnd = (e: TouchEvent): void => {
     if (!this.enabled || e.changedTouches.length === 0 || this.shouldIgnoreInput()) {
       this.touchStartedOnUi = false;
+      this.touchStartTime = 0;
       return;
     }
     if (this.touchStartedOnUi || this.isUiTouchTarget(e.target)) {
+      this.touchStartedOnUi = false;
+      this.touchStartTime = 0;
+      return;
+    }
+    if (!this.touchStartTime) {
       this.touchStartedOnUi = false;
       return;
     }
     const touch = e.changedTouches[0];
     if (this.isInHudDeadZone(touch.clientY) || this.isInHudDeadZone(this.touchStartY)) {
       this.touchStartedOnUi = false;
+      this.touchStartTime = 0;
       return;
     }
     const dx = touch.clientX - this.touchStartX;
@@ -201,12 +211,16 @@ export class InputManager {
           this.bus.emit('player:phase', { active: false });
         }, 300);
       }
+      this.touchStartTime = 0;
+      this.touchStartedOnUi = false;
       return;
     }
 
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > threshold) {
       this.emitLane(dx > 0 ? 1 : -1);
     }
+    this.touchStartTime = 0;
+    this.touchStartedOnUi = false;
   };
 
   private onPointerDown = (e: PointerEvent): void => {

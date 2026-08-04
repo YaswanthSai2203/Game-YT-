@@ -297,4 +297,5 @@ export type EventMap = {
   'director:slowmo': { duration: number; scale: number };
   'director:mercy_pulse': Record<string, never>;
   'audio:mood': { mood: string };
+  'input:cancel-touch': Record<string, never>;
 };
