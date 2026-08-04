@@ -27,7 +27,11 @@ export function bindImmediatePress(
   element: Element,
   handler: (e: Event) => void,
 ): void {
+  let armed = false;
   const run = (e: Event): void => {
+    if (armed) return;
+    armed = true;
+    window.setTimeout(() => { armed = false; }, 400);
     e.stopPropagation();
     if ('preventDefault' in e) e.preventDefault();
     handler(e);
@@ -35,5 +39,9 @@ export function bindImmediatePress(
 
   element.addEventListener('touchstart', run, { passive: false, capture: true });
   element.addEventListener('touchend', (e) => e.stopPropagation(), { capture: true });
-  element.addEventListener('pointerdown', run, { capture: true });
+  element.addEventListener('pointerdown', (e) => {
+    if (!(e instanceof PointerEvent)) return;
+    if (e.pointerType === 'touch') return;
+    run(e);
+  }, { capture: true });
 }

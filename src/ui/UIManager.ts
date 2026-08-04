@@ -210,6 +210,12 @@ export class UIManager {
     const streak = this.save.save.daily.streak;
     const bonusPreview = 25 + Math.min(streak, 7) * 10;
 
+    // Simple mobile menu: never block PLAY behind a modal — toast only.
+    if (UI.SIMPLE_MODE) {
+      this.showToast(`Daily bonus ready: +${bonusPreview} credits (open ☰ menu)`, 'milestone');
+      return;
+    }
+
     const modal = document.createElement('div');
     modal.className = 'modal-layer daily-bonus-modal';
     modal.innerHTML = `
@@ -218,18 +224,34 @@ export class UIManager {
         <p class="daily-bonus-amount">+${bonusPreview} DATA CREDITS</p>
         <p class="daily-bonus-streak">🔥 ${Math.max(streak, 1)} day streak</p>
         <div class="modal-actions">
-          <button class="btn btn-primary" data-action="claim">CLAIM</button>
+          <button type="button" class="btn btn-primary" data-action="claim">CLAIM</button>
+          <button type="button" class="btn btn-secondary" data-action="later">Play</button>
         </div>
       </div>
     `;
     this.overlay.appendChild(modal);
 
-    modal.querySelector('[data-action="claim"]')?.addEventListener('click', () => {
-      this.audio.playMenuConfirm();
-      const bonus = this.save.claimDailyBonus();
-      modal.remove();
-      this.showToast(`+${bonus} Data Credits claimed!`, 'achievement');
-      this.renderMenu();
+    const close = (): void => modal.remove();
+
+    const claimBtn = modal.querySelector('[data-action="claim"]');
+    if (claimBtn) {
+      bindTap(claimBtn, () => {
+        this.audio.playMenuConfirm();
+        const bonus = this.save.claimDailyBonus();
+        close();
+        this.showToast(`+${bonus} Data Credits claimed!`, 'achievement');
+        this.renderMenu();
+      });
+    }
+
+    const laterBtn = modal.querySelector('[data-action="later"]');
+    if (laterBtn) {
+      bindTap(laterBtn, close);
+    }
+
+    bindTap(modal, (e) => {
+      if ((e.target as HTMLElement).closest('.panel')) return;
+      close();
     });
   }
 
@@ -2996,8 +3018,10 @@ export class UIManager {
         padding: max(16px, env(safe-area-inset-top)) 16px 24px;
         transform: translateX(-105%); transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.2, 1);
         display: flex; flex-direction: column; gap: 10px;
+        pointer-events: none;
+        visibility: hidden;
       }
-      .menu-drawer.open { transform: translateX(0); }
+      .menu-drawer.open { transform: translateX(0); pointer-events: auto; visibility: visible; }
       .menu-drawer-balance { font-size: 0.9rem; color: var(--color-textSecondary); margin-bottom: 8px; }
       .menu-drawer-balance strong { color: var(--color-neonGold); }
       .menu-drawer-item {

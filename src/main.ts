@@ -1,10 +1,31 @@
 import { Game } from '@/core/Game';
+import { GAME } from '@/config/constants';
 import {
   bindPlayablesLifecycle,
   hydrateSaveFromPlayables,
 } from '@/platform/playables';
 
+/** One-time PWA cache bust when version changes — fixes phones stuck on old bundles. */
+async function bustStalePwaCache(): Promise<void> {
+  const key = 'neon-pulse-sw-bust';
+  if (localStorage.getItem(key) === GAME.VERSION) return;
+  localStorage.setItem(key, GAME.VERSION);
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+    if ('caches' in window) {
+      const names = await caches.keys();
+      await Promise.all(names.map((n) => caches.delete(n)));
+    }
+  } catch {
+    // Non-fatal — continue boot
+  }
+}
+
 async function main(): Promise<void> {
+  await bustStalePwaCache();
   await hydrateSaveFromPlayables();
 
   const container = document.getElementById('game-container');

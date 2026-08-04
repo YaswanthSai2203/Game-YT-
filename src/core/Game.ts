@@ -125,10 +125,12 @@ export class Game {
       const skip = (): void => {
         window.removeEventListener('keydown', skip);
         this.container.removeEventListener('click', skip);
+        this.container.removeEventListener('touchend', skip);
         resolve();
       };
       window.addEventListener('keydown', skip, { once: true });
       this.container.addEventListener('click', skip, { once: true });
+      this.container.addEventListener('touchend', skip, { once: true, passive: true });
     });
   }
 
