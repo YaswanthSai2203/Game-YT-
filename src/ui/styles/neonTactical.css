@@ -1,0 +1,173 @@
+/**
+ * NEON PULSE — Neon Tactical HUD + Sync Glass
+ * Ghost HUD (in-run) + Sync Glass (menus/modals). Loaded after UIManager base styles.
+ */
+
+:root {
+  --ui-glass-panel: rgba(18, 24, 41, 0.94);
+  --ui-glass-border: rgba(0, 240, 255, 0.35);
+  --ui-glass-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 24px rgba(0, 240, 255, 0.06);
+  --ui-ghost-stat-shadow: 0 0 12px rgba(0, 240, 255, 0.35), 0 1px 3px rgba(0, 0, 0, 0.85);
+  --ui-pause-pill-bg: rgba(10, 14, 26, 0.78);
+  --ui-pause-pill-border: rgba(0, 240, 255, 0.42);
+  --ui-menu-scrim: rgba(10, 14, 26, 0.86);
+  --ui-ease-out: cubic-bezier(0.2, 0.9, 0.2, 1);
+  --ui-duration-fast: 100ms;
+  --ui-duration-normal: 250ms;
+}
+
+/* ─── Sync Hub (menus) ─── */
+body.ui-neon-tactical .screen-menu-simple {
+  background: var(--ui-menu-scrim);
+}
+
+body.ui-neon-tactical .screen-menu-simple::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 120% 80% at 50% -10%, rgba(0, 240, 255, 0.07), transparent 55%);
+  z-index: 0;
+}
+
+body.ui-neon-tactical .screen-menu-simple .menu-shell {
+  position: relative;
+  z-index: 1;
+}
+
+body.ui-neon-tactical .mode-card-simple {
+  background: rgba(18, 24, 41, 0.92);
+  border: 1px solid rgba(0, 240, 255, 0.28);
+  transition: border-color var(--ui-duration-fast) ease-out,
+    transform var(--ui-duration-fast) ease-out,
+    box-shadow var(--ui-duration-normal) var(--ui-ease-out);
+}
+
+body.ui-neon-tactical .mode-card-simple:active {
+  transform: scale(0.98);
+  border-color: rgba(0, 240, 255, 0.55);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  body.ui-neon-tactical .mode-card-simple:hover {
+    border-color: rgba(0, 240, 255, 0.5);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.12);
+    transform: translateY(-1px);
+  }
+}
+
+body.ui-neon-tactical .menu-coins-pill {
+  background: rgba(255, 215, 0, 0.1);
+  border: 1px solid rgba(255, 215, 0, 0.35);
+}
+
+body.ui-neon-tactical .menu-hamburger {
+  background: var(--ui-pause-pill-bg);
+  border: 1px solid var(--ui-pause-pill-border);
+  border-radius: 12px;
+}
+
+/* ─── Ghost HUD (in-run) ─── */
+body.ui-neon-tactical .screen-hud .hud-score,
+body.ui-neon-tactical .screen-hud .hud-time {
+  text-shadow: var(--ui-ghost-stat-shadow);
+  font-variant-numeric: tabular-nums;
+}
+
+body.ui-neon-tactical .screen-hud .hud-pause {
+  background: var(--ui-pause-pill-bg);
+  border: 1px solid var(--ui-pause-pill-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: transform var(--ui-duration-fast) ease-out,
+    border-color var(--ui-duration-fast) ease-out;
+}
+
+body.ui-neon-tactical .screen-hud .hud-pause:active {
+  transform: scale(0.96);
+  border-color: rgba(0, 240, 255, 0.65);
+}
+
+body.ui-neon-tactical .screen-hud .hud-combo-wrap.ghost-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+body.ui-neon-tactical .screen-hud.hud-compact .hud-combo-wrap.active:not(.ghost-hidden) {
+  opacity: 1;
+  visibility: visible;
+}
+
+body.ui-neon-tactical .screen-hud.hud-compact .combo-badge {
+  background: rgba(10, 14, 26, 0.72);
+  border: 1px solid rgba(255, 215, 0, 0.35);
+  border-radius: 8px;
+  padding: 2px 8px;
+  text-shadow: none;
+}
+
+/* ─── Sync Glass (modals / panels) ─── */
+body.ui-neon-tactical .panel {
+  background: var(--ui-glass-panel);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: var(--ui-glass-shadow);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+body.ui-neon-tactical .modal-layer {
+  background: rgba(10, 14, 26, 0.88);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+@media (min-width: 769px) and (pointer: fine) {
+  body.ui-neon-tactical .panel {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  body.ui-neon-tactical .modal-layer {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+}
+
+body.ui-neon-tactical .btn-primary {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.2);
+  transition: transform var(--ui-duration-fast) ease-out,
+    box-shadow var(--ui-duration-normal) ease-out;
+}
+
+body.ui-neon-tactical .btn-primary:active {
+  transform: scale(0.98);
+}
+
+body.ui-neon-tactical .btn-secondary {
+  background: rgba(18, 24, 41, 0.6);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+}
+
+/* ─── High contrast / reduced motion ─── */
+body.high-contrast.ui-neon-tactical .panel,
+body.high-contrast.ui-neon-tactical .modal-layer {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: #121829;
+  border-width: 2px;
+}
+
+body.high-contrast.ui-neon-tactical .hud-score,
+body.high-contrast.ui-neon-tactical .hud-time {
+  text-shadow: none;
+}
+
+body.reduced-motion.ui-neon-tactical .mode-card-simple,
+body.reduced-motion.ui-neon-tactical .hud-pause,
+body.reduced-motion.ui-neon-tactical .btn-primary {
+  transition: none;
+}

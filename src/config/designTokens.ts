@@ -42,7 +42,35 @@ export const DESIGN_TOKENS = {
     modal: 200,
     toast: 300,
   },
+  glass: {
+    panel: 'rgba(18, 24, 41, 0.94)',
+    panelBorder: 'rgba(0, 240, 255, 0.35)',
+    menuScrim: 'rgba(10, 14, 26, 0.86)',
+    pausePill: 'rgba(10, 14, 26, 0.78)',
+  },
+  shadow: {
+    ghostStat: '0 0 12px rgba(0, 240, 255, 0.35), 0 1px 3px rgba(0, 0, 0, 0.85)',
+    panel: '0 12px 40px rgba(0, 0, 0, 0.5), 0 0 24px rgba(0, 240, 255, 0.06)',
+  },
 } as const;
+
+/** Push design tokens to :root for CSS modules and tactical stylesheet. */
+export function applyDesignTokensToRoot(): void {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  const { colors, glass, shadow, radius, duration } = DESIGN_TOKENS;
+  Object.entries(colors).forEach(([k, v]) => {
+    root.style.setProperty(`--color-${k}`, v);
+  });
+  root.style.setProperty('--ui-glass-panel', glass.panel);
+  root.style.setProperty('--ui-glass-border', glass.panelBorder);
+  root.style.setProperty('--ui-menu-scrim', glass.menuScrim);
+  root.style.setProperty('--ui-pause-pill-bg', glass.pausePill);
+  root.style.setProperty('--ui-ghost-stat-shadow', shadow.ghostStat);
+  root.style.setProperty('--ui-glass-shadow', shadow.panel);
+  root.style.setProperty('--ui-radius-lg', radius.lg);
+  root.style.setProperty('--ui-duration-normal', duration.normal);
+}
 
 export function getColorBlindPalette(mode: string): Record<string, string> {
   const base = { ...DESIGN_TOKENS.colors };

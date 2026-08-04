@@ -15,6 +15,11 @@ import { formatScore, formatTime } from '@/utils/math';
 import { isCompactUI } from '@/utils/uiMode';
 import { msIcon, pointsLabel } from '@/utils/icons';
 import { bindImmediatePress, bindTap } from '@/utils/tap';
+import {
+  canShowHypeCallout,
+  canShowHypeVignette,
+  shouldUseHypeToast,
+} from '@/ui/uiEffects';
 import { SaveManager } from '@/core/SaveManager';
 import { AchievementManager } from '@/core/AchievementManager';
 import { UpgradeManager } from '@/core/UpgradeManager';
@@ -290,6 +295,7 @@ export class UIManager {
     const challengeRow = this.overlay.querySelector('#hud-challenge');
     const challengeFill = this.overlay.querySelector('#hud-challenge-fill') as HTMLElement;
     const challengeText = this.overlay.querySelector('#hud-challenge-text');
+    const comboCount = stats.comboCount ?? 0;
 
     if (scoreEl) scoreEl.textContent = formatScore(stats.score);
     if (timeEl) {
@@ -303,8 +309,10 @@ export class UIManager {
     if (comboEl) comboEl.textContent = stats.combo ? stats.combo.replace(/^COMBO\s*/i, '') : '';
     const comboWrap = this.overlay.querySelector('#hud-combo-wrap') ?? this.overlay.querySelector('.hud-combo-wrap');
     if (comboWrap) {
-      comboWrap.classList.toggle('active', !!stats.combo);
-      comboWrap.setAttribute('aria-hidden', stats.combo ? 'false' : 'true');
+      const showCombo = comboCount >= 2;
+      comboWrap.classList.toggle('active', showCombo);
+      comboWrap.classList.toggle('ghost-hidden', !showCombo);
+      comboWrap.setAttribute('aria-hidden', showCombo ? 'false' : 'true');
     }
     if (comboRing && stats.comboTimer !== undefined) {
       const circumference = 2 * Math.PI * 16;
@@ -352,8 +360,7 @@ export class UIManager {
     }
 
     const vignette = this.overlay.querySelector('#hype-vignette');
-    const comboCount = stats.comboCount ?? 0;
-    if (vignette && !isCompactUI()) {
+    if (vignette && canShowHypeVignette(this.save.settings.reducedMotion)) {
       vignette.classList.toggle('active', comboCount >= 5);
       vignette.classList.toggle('intense', comboCount >= 15);
       vignette.classList.toggle('max', comboCount >= 25);
@@ -369,17 +376,25 @@ export class UIManager {
 
   private showHypeCallout(data: { title: string; subtitle?: string; tier?: number; color?: string }): void {
     const tier = data.tier ?? 1;
-    if (this.isInActiveRun() && isCompactUI()) {
-      if (tier < 4) return;
+    const inRun = this.isInActiveRun();
+
+    if (!canShowHypeCallout({
+      tier,
+      reducedMotion: this.save.settings.reducedMotion,
+      inActiveRun: inRun,
+    })) {
+      return;
+    }
+
+    if (shouldUseHypeToast(this.save.settings.reducedMotion, inRun)) {
+      this.showToast(`${data.title}${data.subtitle ? ` — ${data.subtitle}` : ''}`, 'milestone');
+      return;
+    }
+
+    if (inRun && isCompactUI()) {
       const now = performance.now();
       if (now - this.lastHypeAt < 1500) return;
       this.lastHypeAt = now;
-    }
-
-    if (this.save.settings.reducedMotion) {
-      if (this.isInActiveRun() && isCompactUI()) return;
-      this.showToast(`${data.title}${data.subtitle ? ` — ${data.subtitle}` : ''}`, 'milestone');
-      return;
     }
 
     let layer = this.root.querySelector('#hype-layer') as HTMLElement | null;
@@ -762,7 +777,7 @@ export class UIManager {
       { mode: 'practice', label: 'PRACTICE', desc: 'No death — learn the controls' },
     ];
 
-    this.overlay.className = 'screen screen-menu screen-menu-simple';
+    this.overlay.className = 'screen screen-menu screen-menu-simple sync-hub';
     this.overlay.innerHTML = `
       <div class="menu-drawer-backdrop hidden" data-action="close-menu" aria-hidden="true"></div>
       <aside id="menu-drawer" class="menu-drawer" aria-hidden="true" aria-label="Game menu">
@@ -1034,7 +1049,7 @@ export class UIManager {
   private renderHUD(): void {
     const compact = isCompactUI();
     const skin = getHudSkin(compact ? 'minimal' : (this.save.save.unlocks.selectedHudSkin ?? 'default'));
-    this.overlay.className = `screen screen-hud ${skin.cssClass}${compact ? ' hud-compact' : ''}`;
+    this.overlay.className = `screen screen-hud ghost-hud ${skin.cssClass}${compact ? ' hud-compact' : ''}`;
     const hintText = compact
       ? 'Tap screen edges to move · Tap center to phase'
       : '◄ A / ← · D / → ► · SPACE / W = PHASE · ESC = PAUSE';

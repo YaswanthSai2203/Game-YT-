@@ -1,9 +1,18 @@
 import { Game } from '@/core/Game';
 import { GAME } from '@/config/constants';
+import { applyDesignTokensToRoot } from '@/config/designTokens';
 import {
   bindPlayablesLifecycle,
   hydrateSaveFromPlayables,
 } from '@/platform/playables';
+import '@/ui/styles/neonTactical.css';
+import '@fontsource/orbitron/700.css';
+import '@fontsource/orbitron/800.css';
+import '@fontsource/orbitron/900.css';
+import '@fontsource/rajdhani/400.css';
+import '@fontsource/rajdhani/500.css';
+import '@fontsource/rajdhani/600.css';
+import '@fontsource/rajdhani/700.css';
 
 /** One-time PWA cache bust when version changes — fixes phones stuck on old bundles. */
 async function bustStalePwaCache(): Promise<void> {
@@ -25,6 +34,8 @@ async function bustStalePwaCache(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  applyDesignTokensToRoot();
+  document.body.classList.add('ui-neon-tactical');
   await bustStalePwaCache();
   await hydrateSaveFromPlayables();
 
