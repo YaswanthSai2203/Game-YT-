@@ -12,6 +12,10 @@ const LOADERS: Record<string, Loader> = {
     const mod = await import('@/games/offline-rex');
     return mod;
   },
+  'catapult-chaos': async () => {
+    const mod = await import('@/games/catapult-chaos');
+    return mod;
+  },
 };
 
 export async function loadGameModule(gameId: string): Promise<GameModule | null> {
