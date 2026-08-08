@@ -39,9 +39,19 @@ export class Game {
   private running = false;
   private lastTime = 0;
   private container: HTMLElement;
+  private exitToHubHandler: (() => void) | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
+  }
+
+  /** When set (arcade portal mode), menu can return to the multi-game hub. */
+  setExitToHubHandler(handler: () => void): void {
+    this.exitToHubHandler = handler;
+  }
+
+  hasExitToHub(): boolean {
+    return this.exitToHubHandler !== null;
   }
 
   async init(): Promise<void> {
@@ -98,6 +108,7 @@ export class Game {
       onResume: () => this.resumeGame(),
       onQuit: () => this.goToMenu(),
       onRetry: () => this.startGame(this.currentMode),
+      onExitToHub: () => this.exitToHubHandler?.(),
     });
 
     await this.bootSequence();

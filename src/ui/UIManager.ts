@@ -68,6 +68,7 @@ export class UIManager {
     onQuit?: () => void;
     onRetry?: () => void;
     onMenuReady?: () => void;
+    onExitToHub?: () => void;
   } = {};
 
   constructor(
@@ -807,6 +808,12 @@ export class UIManager {
           <span class="drawer-item-line1">${msIcon('help')} How to Play</span>
           <span class="drawer-item-line2">Controls &amp; goals</span>
         </button>
+        ${this.callbacks.onExitToHub ? `
+        <button type="button" class="menu-drawer-item menu-drawer-hub" data-action="hub">
+          <span class="drawer-item-line1">${msIcon('apps')} All Games</span>
+          <span class="drawer-item-line2">Back to arcade</span>
+        </button>
+        ` : ''}
       </aside>
       <div class="menu-shell">
         <div class="menu-toolbar">
@@ -1049,6 +1056,11 @@ export class UIManager {
         else if (action === 'replay') this.openReplay('menu');
         else if (action === 'upgrades') this.showScreen('upgrades');
         else if (action === 'help') this.showScreen('help');
+        else if (action === 'hub') {
+          this.setMenuDrawerOpen(false);
+          this.callbacks.onExitToHub?.();
+          return;
+        }
         else if (action === 'investigation') this.showScreen('investigation');
         else if (action === 'void') {
           this.showToast('Not yet.', 'info');

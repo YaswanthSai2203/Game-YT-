@@ -1,0 +1,153 @@
+/**
+ * NEON ARCADE — multi-game hub styles
+ */
+
+body.ui-neon-tactical .arcade-hub {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: linear-gradient(180deg, rgba(10, 14, 26, 0.72) 0%, rgba(10, 14, 26, 0.98) 50%);
+}
+
+body.ui-neon-tactical .arcade-hub-shell {
+  position: relative;
+  z-index: 1;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+}
+
+body.ui-neon-tactical .arcade-hub-hero {
+  text-align: center;
+  padding: 12px 0 20px;
+}
+
+body.ui-neon-tactical .arcade-game-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+body.ui-neon-tactical .arcade-game-card {
+  position: relative;
+  text-align: left;
+  padding: 16px 16px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 240, 255, 0.22);
+  background: rgba(18, 24, 41, 0.92);
+  color: var(--color-textPrimary);
+  overflow: hidden;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+body.ui-neon-tactical .arcade-game-card:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+body.ui-neon-tactical .arcade-game-featured {
+  min-height: 120px;
+  border-color: rgba(0, 240, 255, 0.5);
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.12) 0%, rgba(18, 24, 41, 0.95) 55%);
+  box-shadow: 0 0 28px rgba(0, 240, 255, 0.12);
+}
+
+body.ui-neon-tactical .arcade-accent-cyan.arcade-game-featured { border-color: rgba(0, 240, 255, 0.5); }
+body.ui-neon-tactical .arcade-accent-violet { border-color: rgba(139, 92, 246, 0.35); }
+body.ui-neon-tactical .arcade-accent-magenta { border-color: rgba(255, 0, 110, 0.35); }
+body.ui-neon-tactical .arcade-accent-gold { border-color: rgba(255, 215, 0, 0.35); }
+
+body.ui-neon-tactical .arcade-game-soon {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+body.ui-neon-tactical .arcade-game-icon {
+  float: right;
+  font-size: 1.75rem;
+  opacity: 0.9;
+  line-height: 1;
+}
+
+body.ui-neon-tactical .arcade-accent-cyan .arcade-game-icon { color: var(--color-neonCyan); }
+body.ui-neon-tactical .arcade-accent-violet .arcade-game-icon { color: var(--color-neonViolet); }
+body.ui-neon-tactical .arcade-accent-magenta .arcade-game-icon { color: var(--color-neonMagenta); }
+body.ui-neon-tactical .arcade-accent-gold .arcade-game-icon { color: var(--color-neonGold); }
+
+body.ui-neon-tactical .arcade-game-title {
+  display: block;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+body.ui-neon-tactical .arcade-game-featured .arcade-game-title {
+  font-size: 1.15rem;
+  color: var(--color-neonCyan);
+}
+
+body.ui-neon-tactical .arcade-game-tagline {
+  display: block;
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-neonViolet);
+  margin-top: 2px;
+}
+
+body.ui-neon-tactical .arcade-game-desc {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--color-textSecondary);
+  margin-top: 6px;
+  line-height: 1.35;
+  padding-right: 36px;
+}
+
+body.ui-neon-tactical .arcade-game-cta {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: rgba(0, 240, 255, 0.15);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  color: var(--color-neonCyan);
+}
+
+body.ui-neon-tactical .arcade-game-cta-soon {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--color-textSecondary);
+}
+
+body.ui-neon-tactical .arcade-hub-foot {
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--color-textSecondary);
+  margin-top: 20px;
+  letter-spacing: 0.06em;
+}
+
+body.ui-neon-tactical .arcade-launch-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 24px;
+  color: var(--color-textPrimary);
+  font-family: 'Orbitron', sans-serif;
+}
+
+body.ui-neon-tactical .arcade-launch-error p {
+  color: var(--color-textSecondary);
+  margin: 12px 0 20px;
+  font-family: Rajdhani, sans-serif;
+}
