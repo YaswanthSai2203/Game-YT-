@@ -6,7 +6,8 @@ import {
   drawGround,
   drawParallaxBg,
   drawSignalDrone,
-  REX_PALETTE,
+  drawSpeedLines,
+  drawVignette,
   spawnDust,
   type DustParticle,
 } from '@/games/offline-rex/offlineRexRender';
@@ -249,6 +250,8 @@ export class OfflineRexGame {
 
     for (const p of this.dust) {
       p.x += p.vx * step;
+      p.y += p.vy * step;
+      p.vy += 0.08 * step;
       p.life -= step * 0.04;
     }
     this.dust = this.dust.filter((p) => p.life > 0);
@@ -319,11 +322,12 @@ export class OfflineRexGame {
     const ctx = this.ctx;
 
     drawParallaxBg(ctx, w, h, this.groundY, this.groundOffset, this.bgOffset);
+    drawSpeedLines(ctx, w, this.groundY, this.speed, this.groundOffset);
     drawGround(ctx, w, h, this.groundY, this.groundOffset);
 
     for (const o of this.obstacles) {
       if (o.type === 'cactus') drawFirewall(ctx, o.x, this.groundY, o.w, o.h, this.pulse);
-      else drawSignalDrone(ctx, o.x, o.y ?? this.groundY - 55, o.w, o.wingUp, this.pulse);
+      else drawSignalDrone(ctx, o.x, o.y ?? this.groundY - 55, o.w, o.wingUp, this.pulse, this.animFrame);
     }
 
     drawDust(ctx, this.dust);
@@ -333,18 +337,11 @@ export class OfflineRexGame {
     const dinoDrawY = duck ? this.groundY - this.dinoDuckH : this.dinoY;
     drawCyberRex(ctx, this.dinoX, dinoDrawY, duck, this.animFrame, grounded && this.phase === 'playing');
 
-    if (this.deathFlash > 0) {
-      ctx.fillStyle = `rgba(255, 0, 110, ${this.deathFlash * 0.35})`;
-      ctx.fillRect(0, 0, w, h);
-    }
+    drawVignette(ctx, w, h);
 
-    if (this.phase === 'intro') {
-      ctx.fillStyle = REX_PALETTE.cyan;
-      ctx.globalAlpha = 0.5 + Math.sin(this.pulse * 3) * 0.2;
-      ctx.font = '600 11px Rajdhani, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('▶  TAP TO START', w / 2, this.groundY - 64);
-      ctx.globalAlpha = 1;
+    if (this.deathFlash > 0) {
+      ctx.fillStyle = `rgba(255, 0, 110, ${this.deathFlash * 0.4})`;
+      ctx.fillRect(0, 0, w, h);
     }
   }
 
