@@ -162,7 +162,7 @@ export class HubUI {
           <span class="arcade-game-tagline">${game.tagline}</span>
           <span class="arcade-game-desc">${game.description}</span>
           ${playable
-            ? `<span class="arcade-game-cta">${featured ? 'Play now' : 'Play'} ${msIcon('arrow_forward')}</span>`
+            ? `<span class="arcade-game-cta"><span class="arcade-game-cta-label">${featured ? 'Play now' : 'Play'}</span>${msIcon('arrow_forward')}</span>`
             : '<span class="arcade-game-cta arcade-game-cta-soon">Coming soon</span>'}
         </div>
       </button>

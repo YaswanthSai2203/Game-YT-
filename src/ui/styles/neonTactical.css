@@ -16,6 +16,21 @@
   --ui-duration-normal: 250ms;
 }
 
+/* Material Symbols — global (hub loads before UIManager injects styles) */
+.ms-icon {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 1em;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  vertical-align: -0.15em;
+  white-space: nowrap;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
 /* ─── Sync Hub (menus) ─── */
 body.ui-neon-tactical .screen-menu-simple {
   background: var(--ui-menu-scrim);
