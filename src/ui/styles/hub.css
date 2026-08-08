@@ -504,6 +504,34 @@ body.ui-neon-tactical .arcade-cover-offline-rex .arcade-cover-art::after {
   filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.6));
 }
 
+body.ui-neon-tactical .arcade-cover-catapult-chaos .arcade-cover-art {
+  background: linear-gradient(180deg, #1a3328 0%, #0f1628 100%);
+}
+
+body.ui-neon-tactical .arcade-cover-catapult-chaos .arcade-cover-art::before {
+  content: '';
+  position: absolute;
+  left: 12%;
+  bottom: 22%;
+  width: 48px;
+  height: 32px;
+  background: linear-gradient(135deg, #8d6e4a, #5d4030);
+  clip-path: polygon(0 100%, 50% 0, 100% 100%);
+}
+
+body.ui-neon-tactical .arcade-cover-catapult-chaos .arcade-cover-art::after {
+  content: '';
+  position: absolute;
+  left: 28%;
+  bottom: 38%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, #ffd54f 50%, #f9a825 100%);
+  box-shadow: 0 0 16px rgba(255, 213, 79, 0.7);
+  animation: arcade-cover-pulse-dot 1.4s ease-in-out infinite;
+}
+
 body.ui-neon-tactical .arcade-cover-void-drift .arcade-cover-art {
   background: radial-gradient(ellipse at 30% 20%, rgba(139, 92, 246, 0.25) 0%, transparent 50%),
     #060912;

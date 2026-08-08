@@ -41,6 +41,16 @@ export const GAME_CATALOG: GameCatalogEntry[] = [
     accent: 'magenta',
   },
   {
+    id: 'catapult-chaos',
+    title: 'CATAPULT CHAOS',
+    tagline: 'Physics launcher',
+    description: 'Aim, launch, chain combos. Every shot is a calculated disaster.',
+    genre: 'Physics',
+    status: 'available',
+    icon: 'sports_esports',
+    accent: 'gold',
+  },
+  {
     id: 'void-drift',
     title: 'VOID DRIFT',
     tagline: 'Endless flyer',
