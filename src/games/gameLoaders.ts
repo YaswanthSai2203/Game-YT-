@@ -8,6 +8,10 @@ const LOADERS: Record<string, Loader> = {
     const mod = await import('@/games/neon-pulse');
     return mod;
   },
+  'offline-rex': async () => {
+    const mod = await import('@/games/offline-rex');
+    return mod;
+  },
 };
 
 export async function loadGameModule(gameId: string): Promise<GameModule | null> {
