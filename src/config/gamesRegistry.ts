@@ -32,7 +32,7 @@ export const GAME_CATALOG: GameCatalogEntry[] = [
     id: 'offline-rex',
     title: 'OFFLINE REX',
     tagline: 'Endless runner',
-    description: 'Jump the firewalls. Duck the drones. Classic no-signal run.',
+    description: 'Jump firewall spikes. Duck signal drones. Neon endless run.',
     status: 'available',
     icon: 'wifi_off',
     accent: 'magenta',

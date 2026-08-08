@@ -1,18 +1,16 @@
 import type { GameHandle, GameLaunchOptions, GameModule } from '@/games/types';
+import {
+  drawCyberRex,
+  drawDust,
+  drawFirewall,
+  drawGround,
+  drawParallaxBg,
+  drawSignalDrone,
+  REX_PALETTE,
+  spawnDust,
+  type DustParticle,
+} from '@/games/offline-rex/offlineRexRender';
 import '@/games/offline-rex/offlineRex.css';
-
-const COLORS = {
-  bg: '#0a0e1a',
-  ground: '#1a2744',
-  groundLine: '#00f0ff',
-  dino: '#00f0ff',
-  dinoEye: '#0a0e1a',
-  obstacle: '#ff006e',
-  bird: '#8b5cf6',
-  text: '#e8edf5',
-  textDim: '#8892a8',
-  score: '#00f0ff',
-};
 
 type Phase = 'intro' | 'playing' | 'dead';
 
@@ -42,11 +40,15 @@ export class OfflineRexGame {
   private hiScore = 0;
   private spawnTimer = 0;
   private obstacles: Obstacle[] = [];
+  private dust: DustParticle[] = [];
   private dinoY = 0;
   private dinoVy = 0;
   private ducking = false;
   private animFrame = 0;
   private groundOffset = 0;
+  private bgOffset = 0;
+  private pulse = 0;
+  private deathFlash = 0;
 
   private readonly gravity = 0.65;
   private readonly jumpForce = -12.5;
@@ -68,16 +70,31 @@ export class OfflineRexGame {
     this.root = document.createElement('div');
     this.root.className = 'offline-rex-root';
     this.root.innerHTML = `
-      <button type="button" class="offline-rex-back" data-action="hub">← Arcade</button>
-      <div class="offline-rex-hud">
-        <span class="offline-rex-hi">HI ${String(this.hiScore).padStart(5, '0')}</span>
-        <span class="offline-rex-score" id="offline-rex-score">00000</span>
+      <div class="offline-rex-chrome">
+        <button type="button" class="offline-rex-back" data-action="hub">
+          <span class="offline-rex-back-icon" aria-hidden="true">←</span>
+          <span>Arcade</span>
+        </button>
+        <div class="offline-rex-hud">
+          <div class="offline-rex-hud-pill">
+            <span class="offline-rex-hud-label">HI</span>
+            <span class="offline-rex-hi">${String(this.hiScore).padStart(5, '0')}</span>
+          </div>
+          <div class="offline-rex-hud-pill offline-rex-hud-score">
+            <span class="offline-rex-hud-label">SCORE</span>
+            <span class="offline-rex-score" id="offline-rex-score">00000</span>
+          </div>
+        </div>
       </div>
       <canvas class="offline-rex-canvas" aria-label="Offline Rex runner"></canvas>
       <div class="offline-rex-overlay" id="offline-rex-overlay">
-        <p class="offline-rex-title">OFFLINE REX</p>
-        <p class="offline-rex-sub" id="offline-rex-msg">No signal detected — run anyway</p>
-        <p class="offline-rex-hint">Tap or press Space to jump · ↓ to duck</p>
+        <div class="offline-rex-panel">
+          <p class="offline-rex-eyebrow">No signal</p>
+          <h1 class="offline-rex-title">OFFLINE REX</h1>
+          <p class="offline-rex-sub" id="offline-rex-msg">The grid is down — keep running</p>
+          <p class="offline-rex-hint">Tap to jump · Hold ↓ to duck under drones</p>
+          <p class="offline-rex-cta" id="offline-rex-cta">TAP TO START</p>
+        </div>
       </div>
     `;
     container.appendChild(this.root);
@@ -114,7 +131,7 @@ export class OfflineRexGame {
     this.canvas.style.width = `${w}px`;
     this.canvas.style.height = `${h}px`;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.groundY = h - Math.max(48, h * 0.12);
+    this.groundY = h - Math.max(56, h * 0.14);
     this.dinoY = this.groundY - this.dinoStandH;
   }
 
@@ -154,27 +171,30 @@ export class OfflineRexGame {
     this.score = 0;
     this.speed = 6;
     this.obstacles = [];
+    this.dust = [];
     this.spawnTimer = 0;
+    this.deathFlash = 0;
     this.dinoY = this.groundY - this.dinoStandH;
     this.dinoVy = 0;
     this.ducking = false;
-    const overlay = this.root.querySelector('#offline-rex-overlay');
-    overlay?.classList.add('hidden');
+    this.root.querySelector('#offline-rex-overlay')?.classList.add('hidden');
     window.addEventListener('keyup', this.onKeyUp);
   }
 
   private gameOver(): void {
     this.phase = 'dead';
+    this.deathFlash = 1;
     if (this.score > this.hiScore) {
       this.hiScore = this.score;
       localStorage.setItem('offline-rex-hi', String(this.hiScore));
       const hiEl = this.root.querySelector('.offline-rex-hi');
-      if (hiEl) hiEl.textContent = `HI ${String(this.hiScore).padStart(5, '0')}`;
+      if (hiEl) hiEl.textContent = String(this.hiScore).padStart(5, '0');
     }
-    const overlay = this.root.querySelector('#offline-rex-overlay');
     const msg = this.root.querySelector('#offline-rex-msg');
-    if (msg) msg.textContent = `Connection lost — score ${this.score}`;
-    overlay?.classList.remove('hidden');
+    const cta = this.root.querySelector('#offline-rex-cta');
+    if (msg) msg.textContent = `Sync lost at ${this.score} points`;
+    if (cta) cta.textContent = 'TAP TO RETRY';
+    this.root.querySelector('#offline-rex-overlay')?.classList.remove('hidden');
     window.removeEventListener('keyup', this.onKeyUp);
   }
 
@@ -199,78 +219,88 @@ export class OfflineRexGame {
   }
 
   private update(step: number): void {
+    this.pulse += step * 0.08;
+    if (this.deathFlash > 0) this.deathFlash = Math.max(0, this.deathFlash - step * 0.06);
+
     if (this.phase !== 'playing') {
-      this.animFrame += step * 0.15;
+      this.animFrame += step * 0.12;
+      this.bgOffset += step * 0.5;
       return;
     }
 
-    this.animFrame += step * 0.25;
+    this.animFrame += step * 0.28;
     this.speed = Math.min(14, this.speed + step * 0.002);
-    this.groundOffset = (this.groundOffset + this.speed * step) % 24;
+    this.groundOffset = (this.groundOffset + this.speed * step) % 48;
+    this.bgOffset += this.speed * step * 0.35;
     this.score += Math.floor(step * this.speed * 0.35);
     const scoreEl = this.root.querySelector('#offline-rex-score');
     if (scoreEl) scoreEl.textContent = String(this.score).padStart(5, '0');
 
-    // Dino physics
     this.dinoVy += this.gravity * step;
     this.dinoY += this.dinoVy * step;
     const standTop = this.groundY - (this.ducking ? this.dinoDuckH : this.dinoStandH);
     if (this.dinoY > standTop) {
       this.dinoY = standTop;
       this.dinoVy = 0;
+      if (Math.floor(this.animFrame) % 4 === 0) {
+        this.dust.push(spawnDust(this.dinoX + 8, this.groundY - 4));
+      }
     }
 
-    // Obstacles
+    for (const p of this.dust) {
+      p.x += p.vx * step;
+      p.life -= step * 0.04;
+    }
+    this.dust = this.dust.filter((p) => p.life > 0);
+
     this.spawnTimer -= step;
     if (this.spawnTimer <= 0) {
       this.spawnObstacle();
-      this.spawnTimer = 55 + Math.random() * 70 - this.speed * 2;
+      this.spawnTimer = 58 + Math.random() * 65 - this.speed * 2;
     }
 
     for (const o of this.obstacles) {
       o.x -= this.speed * step;
-      if (o.type === 'bird') o.wingUp = Math.floor(this.animFrame) % 2 === 0;
+      if (o.type === 'bird') o.wingUp = Math.floor(this.animFrame * 0.8) % 2 === 0;
     }
-    this.obstacles = this.obstacles.filter((o) => o.x + o.w > -20);
+    this.obstacles = this.obstacles.filter((o) => o.x + o.w > -30);
 
     if (this.checkCollision()) this.gameOver();
   }
 
   private spawnObstacle(): void {
-    const bird = this.score > 400 && Math.random() < 0.35;
+    const bird = this.score > 350 && Math.random() < 0.38;
     if (bird) {
-      const h = 24;
       const flyingHigh = Math.random() < 0.5;
       this.obstacles.push({
-        x: this.canvas.clientWidth + 20,
-        w: 36,
-        h,
+        x: this.canvas.clientWidth + 24,
+        w: 42,
+        h: 24,
         type: 'bird',
         wingUp: true,
-        y: flyingHigh ? this.groundY - 70 : this.groundY - 48,
+        y: flyingHigh ? this.groundY - 78 : this.groundY - 52,
       });
       return;
     }
-    const scale = 0.85 + Math.random() * 0.5;
-    const w = (18 + Math.floor(Math.random() * 3) * 12) * scale;
-    const h = (38 + Math.random() * 16) * scale;
-    this.obstacles.push({ x: this.canvas.clientWidth + 20, w, h, type: 'cactus', wingUp: false });
+    const scale = 0.9 + Math.random() * 0.45;
+    const variant = Math.floor(Math.random() * 3);
+    const w = (variant === 0 ? 22 : variant === 1 ? 38 : 54) * scale;
+    const h = (40 + Math.random() * 14) * scale;
+    this.obstacles.push({ x: this.canvas.clientWidth + 24, w, h, type: 'cactus', wingUp: false });
   }
 
   private dinoHitbox(): { x: number; y: number; w: number; h: number } {
     const w = this.ducking ? this.dinoDuckW : this.dinoStandW;
     const h = this.ducking ? this.dinoDuckH : this.dinoStandH;
     const y = this.ducking ? this.groundY - h : this.dinoY;
-    return { x: this.dinoX + 6, y: y + 4, w: w - 12, h: h - 8 };
+    return { x: this.dinoX + 8, y: y + 6, w: w - 14, h: h - 10 };
   }
 
   private checkCollision(): boolean {
     const d = this.dinoHitbox();
     for (const o of this.obstacles) {
-      const oy = o.type === 'bird'
-        ? (o.y ?? this.groundY - 55)
-        : this.groundY - o.h;
-      const pad = 4;
+      const oy = o.type === 'bird' ? (o.y ?? this.groundY - 55) : this.groundY - o.h;
+      const pad = 5;
       if (
         d.x + pad < o.x + o.w - pad &&
         d.x + d.w - pad > o.x + pad &&
@@ -288,91 +318,34 @@ export class OfflineRexGame {
     const h = this.canvas.clientHeight;
     const ctx = this.ctx;
 
-    ctx.fillStyle = COLORS.bg;
-    ctx.fillRect(0, 0, w, h);
+    drawParallaxBg(ctx, w, h, this.groundY, this.groundOffset, this.bgOffset);
+    drawGround(ctx, w, h, this.groundY, this.groundOffset);
 
-    // Ground
-    ctx.fillStyle = COLORS.ground;
-    ctx.fillRect(0, this.groundY, w, h - this.groundY);
-    ctx.strokeStyle = COLORS.groundLine;
-    ctx.globalAlpha = 0.35;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, this.groundY);
-    ctx.lineTo(w, this.groundY);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    // Ground dashes
-    ctx.fillStyle = COLORS.groundLine;
-    ctx.globalAlpha = 0.2;
-    for (let x = -this.groundOffset; x < w; x += 24) {
-      ctx.fillRect(x, this.groundY + 14, 12, 2);
-    }
-    ctx.globalAlpha = 1;
-
-    // Obstacles
     for (const o of this.obstacles) {
-      if (o.type === 'cactus') this.drawCactus(o);
-      else this.drawBird(o);
+      if (o.type === 'cactus') drawFirewall(ctx, o.x, this.groundY, o.w, o.h, this.pulse);
+      else drawSignalDrone(ctx, o.x, o.y ?? this.groundY - 55, o.w, o.wingUp, this.pulse);
     }
 
-    // Dino
-    this.drawDino();
+    drawDust(ctx, this.dust);
 
-    // Intro idle bounce
-    if (this.phase === 'intro') {
-      ctx.fillStyle = COLORS.textDim;
-      ctx.font = '12px Rajdhani, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('TAP TO START', w / 2, this.groundY - 80);
-    }
-  }
-
-  private drawDino(): void {
-    const ctx = this.ctx;
     const duck = this.phase === 'playing' && this.ducking;
-    const w = duck ? this.dinoDuckW : this.dinoStandW;
-    const h = duck ? this.dinoDuckH : this.dinoStandH;
-    const y = duck ? this.groundY - h : this.dinoY;
-    const leg = Math.floor(this.animFrame) % 2 === 0;
+    const grounded = this.isGrounded() || duck;
+    const dinoDrawY = duck ? this.groundY - this.dinoDuckH : this.dinoY;
+    drawCyberRex(ctx, this.dinoX, dinoDrawY, duck, this.animFrame, grounded && this.phase === 'playing');
 
-    ctx.fillStyle = COLORS.dino;
-    if (duck) {
-      ctx.fillRect(this.dinoX, y + 8, w, h - 8);
-      ctx.fillRect(this.dinoX + w - 14, y, 14, 14);
-    } else {
-      ctx.fillRect(this.dinoX + 8, y + 10, w - 16, h - 18);
-      ctx.fillRect(this.dinoX + w - 18, y + 2, 16, 16);
-      ctx.fillRect(this.dinoX, y + h - 10, 10, leg ? 6 : 10);
-      ctx.fillRect(this.dinoX + 14, y + h - 10, 10, leg ? 10 : 6);
+    if (this.deathFlash > 0) {
+      ctx.fillStyle = `rgba(255, 0, 110, ${this.deathFlash * 0.35})`;
+      ctx.fillRect(0, 0, w, h);
     }
-    ctx.fillStyle = COLORS.dinoEye;
-    ctx.fillRect(this.dinoX + w - 10, y + (duck ? 4 : 6), 4, 4);
-  }
 
-  private drawCactus(o: Obstacle): void {
-    const ctx = this.ctx;
-    const x = o.x;
-    const y = this.groundY - o.h;
-    ctx.fillStyle = COLORS.obstacle;
-    ctx.fillRect(x + o.w * 0.35, y, o.w * 0.3, o.h);
-    if (o.w > 22) {
-      ctx.fillRect(x, y + o.h * 0.35, o.w * 0.35, o.h * 0.12);
-      ctx.fillRect(x + o.w * 0.2, y + o.h * 0.2, o.w * 0.2, o.h * 0.2);
-      ctx.fillRect(x + o.w * 0.65, y + o.h * 0.45, o.w * 0.35, o.h * 0.12);
-      ctx.fillRect(x + o.w * 0.6, y + o.h * 0.3, o.w * 0.2, o.h * 0.2);
+    if (this.phase === 'intro') {
+      ctx.fillStyle = REX_PALETTE.cyan;
+      ctx.globalAlpha = 0.5 + Math.sin(this.pulse * 3) * 0.2;
+      ctx.font = '600 11px Rajdhani, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('▶  TAP TO START', w / 2, this.groundY - 64);
+      ctx.globalAlpha = 1;
     }
-  }
-
-  private drawBird(o: Obstacle): void {
-    const ctx = this.ctx;
-    const y = o.y ?? this.groundY - 55;
-    ctx.fillStyle = COLORS.bird;
-    ctx.fillRect(o.x, y + 8, o.w, 6);
-    ctx.fillRect(o.x + 8, y, 8, 10);
-    const wingY = o.wingUp ? y + 2 : y + 10;
-    ctx.fillRect(o.x + 18, wingY, 14, 4);
   }
 
   destroy(): void {
@@ -402,7 +375,7 @@ class OfflineRexHandle implements GameHandle {
   }
 
   handlePlayablesAudio(): void {
-    // No audio in this mini-game
+    // No audio
   }
 }
 
