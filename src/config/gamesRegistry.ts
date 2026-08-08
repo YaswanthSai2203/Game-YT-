@@ -5,6 +5,7 @@ export interface GameCatalogEntry {
   title: string;
   tagline: string;
   description: string;
+  genre: string;
   status: GameCatalogStatus;
   icon: string;
   accent: 'cyan' | 'magenta' | 'violet' | 'gold';
@@ -13,7 +14,7 @@ export interface GameCatalogEntry {
 
 export const ARCADE = {
   TITLE: 'NEON ARCADE',
-  SUBTITLE: 'Pick a game · Tap to play',
+  SUBTITLE: 'Instant-play neon worlds — no installs, no waits',
 } as const;
 
 /** Portal catalog — add new games here and register a loader in gameLoaders.ts */
@@ -23,6 +24,7 @@ export const GAME_CATALOG: GameCatalogEntry[] = [
     title: 'NEON PULSE',
     tagline: 'Lane runner',
     description: 'Dodge firewalls, collect shards, phase through danger.',
+    genre: 'Action',
     status: 'available',
     icon: 'bolt',
     accent: 'cyan',
@@ -32,7 +34,8 @@ export const GAME_CATALOG: GameCatalogEntry[] = [
     id: 'offline-rex',
     title: 'OFFLINE REX',
     tagline: 'Endless runner',
-    description: 'Jump firewall spikes. Duck signal drones. Neon endless run.',
+    description: 'Jump firewall spikes. Duck signal drones. Survive the blackout.',
+    genre: 'Arcade',
     status: 'available',
     icon: 'wifi_off',
     accent: 'magenta',
@@ -42,9 +45,10 @@ export const GAME_CATALOG: GameCatalogEntry[] = [
     title: 'VOID DRIFT',
     tagline: 'Endless flyer',
     description: 'Thread neon gates in zero-gravity drift.',
+    genre: 'Flight',
     status: 'coming_soon',
     icon: 'rocket_launch',
-    accent: 'magenta',
+    accent: 'violet',
   },
 ];
 
