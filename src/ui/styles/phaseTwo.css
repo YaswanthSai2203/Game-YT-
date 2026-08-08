@@ -325,3 +325,97 @@ body.ui-neon-tactical .hud-compact .hud-hint-touch {
 body.ui-neon-tactical .hud-compact .hud-lane-hint {
   display: block;
 }
+
+/* ─── Shop tabs + cosmetic list ─── */
+body.ui-neon-tactical .shop-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 16px;
+}
+
+body.ui-neon-tactical .shop-tab {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-textSecondary);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+body.ui-neon-tactical .shop-tab-active {
+  color: var(--color-neonCyan);
+  border-color: rgba(0, 240, 255, 0.5);
+  background: rgba(0, 240, 255, 0.1);
+}
+
+body.ui-neon-tactical .cosmetic-shop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 48vh;
+  overflow-y: auto;
+}
+
+body.ui-neon-tactical .cosmetic-shop-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+body.ui-neon-tactical .cosmetic-shop-item.can-buy {
+  border-color: rgba(0, 240, 255, 0.35);
+}
+
+body.ui-neon-tactical .cosmetic-shop-item.owned {
+  opacity: 0.75;
+}
+
+body.ui-neon-tactical .cosmetic-shop-info {
+  flex: 1;
+  min-width: 0;
+}
+
+body.ui-neon-tactical .cosmetic-shop-name {
+  display: block;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+body.ui-neon-tactical .cosmetic-shop-blurb {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-textSecondary);
+  margin-top: 2px;
+}
+
+body.ui-neon-tactical .cosmetic-shop-tag {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  color: var(--color-neonViolet);
+}
+
+/* ─── Settings — no flicker on mobile sliders ─── */
+body.ui-neon-tactical .settings-stable.modal-overlay {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(10, 14, 26, 0.97);
+}
+
+body.ui-neon-tactical .settings-panel-stable {
+  animation: none !important;
+  transform: translateZ(0);
+}
+
+body.ui-neon-tactical .settings-stable .setting-row input[type="range"] {
+  touch-action: none;
+}

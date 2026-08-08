@@ -16,6 +16,7 @@ export class AudioManager {
   private musicStep = 0;
   private pauseDucked = false;
   private platformMuted = false;
+  private backgroundMuted = false;
   private save: SaveManager;
   private intensity = 0;
   private gridMood = 'curious';
@@ -45,27 +46,44 @@ export class AudioManager {
 
   private applyVolumes(): void {
     const s = this.save.settings;
-    if (!this.masterGain) return;
-    this.masterGain.gain.value = this.platformMuted ? 0 : s.masterVolume;
-    if (this.sfxGain) this.sfxGain.gain.value = s.sfxVolume;
-    if (this.musicGain) this.musicGain.gain.value = s.musicVolume;
+    if (!this.masterGain || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    const master = (this.platformMuted || this.backgroundMuted) ? 0 : s.masterVolume;
+    this.masterGain.gain.setTargetAtTime(master, t, 0.02);
+    if (this.sfxGain) this.sfxGain.gain.setTargetAtTime(s.sfxVolume, t, 0.02);
+    if (this.musicGain) {
+      const music = s.musicVolume * (this.pauseDucked && !this.backgroundMuted ? 0.15 : 1);
+      this.musicGain.gain.setTargetAtTime(music, t, 0.02);
+    }
   }
 
   refresh(): void {
+    this.ensureAudible();
     this.applyVolumes();
-    if (this.pauseDucked) this.setPaused(true);
   }
 
   setPaused(ducked: boolean): void {
     if (!this.musicGain || !this.ctx) return;
     this.pauseDucked = ducked;
-    const vol = this.save.settings.musicVolume * (ducked ? 0.15 : 1);
-    this.musicGain.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.08);
+    this.applyVolumes();
   }
 
   setPlatformMuted(muted: boolean): void {
     this.platformMuted = muted;
     this.applyVolumes();
+  }
+
+  setBackgroundMuted(muted: boolean): void {
+    this.backgroundMuted = muted;
+    this.applyVolumes();
+  }
+
+  /** Short preview when adjusting volume sliders in settings. */
+  previewVolume(kind: 'master' | 'music' | 'sfx'): void {
+    this.ensureAudible();
+    if (kind === 'music' && this.musicPlaying) return;
+    const vol = kind === 'master' ? 0.2 : kind === 'music' ? 0.15 : 0.18;
+    this.playTone(kind === 'music' ? 392 : 660, 0.06, 'sine', vol);
   }
 
   resume(): void {

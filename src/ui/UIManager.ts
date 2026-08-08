@@ -2,6 +2,7 @@ import type { GameMode, GameSettings, RunStats } from '@/types';
 import { getColorBlindPalette } from '@/config/designTokens';
 import { MODE_CONFIG, SYNC, GAME, UPGRADES, WEEKLY, UI } from '@/config/constants';
 import { CORE_DEFS, TRAIL_DEFS, THEME_DEFS } from '@/config/cosmeticsConfig';
+import { COSMETIC_SHOP } from '@/config/cosmeticShopConfig';
 import {
   HUD_SKINS, MUSIC_PACKS, AI_PERSONALITIES, getActiveSeason, getHudSkin,
 } from '@/config/engagementConfig';
@@ -58,6 +59,8 @@ export class UIManager {
   private lastHypeAt = 0;
   private tutorialDismissResolve: (() => void) | null = null;
   private pauseModalEl: HTMLElement | null = null;
+  private shopTab: 'upgrades' | 'cosmetics' = 'upgrades';
+  private volumePreviewAt = 0;
   private callbacks: {
     onStartGame?: (mode: GameMode) => void;
     onResume?: () => void;
@@ -794,7 +797,7 @@ export class UIManager {
         <p class="menu-drawer-balance">${msIcon('paid')} <strong>${points}</strong> points</p>
         <button type="button" class="menu-drawer-item menu-shop-btn" data-action="upgrades">
           <span class="drawer-item-line1">${msIcon('storefront')} Shop</span>
-          <span class="drawer-item-line2">${points} points</span>
+          <span class="drawer-item-line2">Upgrades &amp; cosmetics</span>
         </button>
         <button type="button" class="menu-drawer-item" data-action="settings">
           <span class="drawer-item-line1">${msIcon('settings')} Settings</span>
@@ -1161,60 +1164,124 @@ export class UIManager {
   }
 
   private renderUpgrades(): void {
+    this.renderShop(this.shopTab);
+  }
+
+  private renderShop(tab: 'upgrades' | 'cosmetics'): void {
+    this.shopTab = tab;
     const credits = this.upgrades.getCredits();
     const ids = Object.keys(UPGRADES) as UpgradeId[];
     const affordable = ids.filter((id) => this.upgrades.canAfford(id)).length;
+    const allMaxed = ids.every((id) => this.upgrades.isMaxed(id));
 
-    this.overlay.className = 'screen screen-upgrades modal-overlay';
-    this.overlay.innerHTML = `
-      <div class="modal panel panel-scroll animate-in">
-        <h2 class="modal-title">UPGRADES</h2>
-        <p class="upgrade-credits">${msIcon('paid')} ${credits.toLocaleString()} points</p>
-        <p class="upgrade-hint">${affordable > 0
-          ? `${affordable} upgrade${affordable > 1 ? 's' : ''} available now — pick one below`
-          : 'Earn credits by collecting shards and completing runs'}</p>
-        <div class="upgrade-list">
-          ${ids.map((id) => {
-            const def = UPGRADES[id];
-            const level = this.upgrades.getLevel(id);
-            const maxed = this.upgrades.isMaxed(id);
-            const cost = this.upgrades.getCost(id);
-            const canBuy = this.upgrades.canAfford(id);
-            const deficit = Math.max(0, cost - credits);
-            return `
-              <div class="upgrade-item ${maxed ? 'maxed' : ''} ${canBuy ? 'can-buy' : ''}">
-                <span class="upgrade-icon">${def.icon}</span>
-                <div class="upgrade-info">
-                  <span class="upgrade-name">${def.name} ${maxed ? '(MAX)' : `Lv.${level}/${def.maxLevel}`}</span>
-                  <span class="upgrade-desc">${def.description}</span>
-                  ${!maxed && !canBuy ? `<span class="upgrade-need">Need ${deficit} more ◈ — keep collecting shards</span>` : ''}
-                </div>
-                <button type="button" class="btn btn-primary btn-sm" data-upgrade="${id}" ${!canBuy ? 'disabled' : ''} aria-label="${maxed ? `${def.name} maxed` : canBuy ? `Buy ${def.name} for ${cost} credits` : `Need ${deficit} more credits for ${def.name}`}">
-                  ${maxed ? `${msIcon('check')} MAX` : canBuy ? `${pointsLabel(cost)}` : `+${deficit}`}
-                </button>
+    const upgradesHtml = `
+      <p class="upgrade-hint">${affordable > 0
+        ? `${affordable} upgrade${affordable > 1 ? 's' : ''} ready — tap to buy`
+        : allMaxed
+          ? 'All upgrades maxed — try the Cosmetics tab'
+          : 'Earn points by collecting shards each run'}</p>
+      <div class="upgrade-list">
+        ${ids.map((id) => {
+          const def = UPGRADES[id];
+          const level = this.upgrades.getLevel(id);
+          const maxed = this.upgrades.isMaxed(id);
+          const cost = this.upgrades.getCost(id);
+          const canBuy = this.upgrades.canAfford(id);
+          const deficit = Math.max(0, cost - credits);
+          return `
+            <div class="upgrade-item ${maxed ? 'maxed' : ''} ${canBuy ? 'can-buy' : ''}">
+              <span class="upgrade-icon">${def.icon}</span>
+              <div class="upgrade-info">
+                <span class="upgrade-name">${def.name} ${maxed ? '(MAX)' : `Lv.${level}/${def.maxLevel}`}</span>
+                <span class="upgrade-desc">${def.description}</span>
+                ${!maxed && !canBuy ? `<span class="upgrade-need">Need ${deficit} more points</span>` : ''}
               </div>
-            `;
-          }).join('')}
-        </div>
-        <button type="button" class="btn btn-secondary" data-action="back">← BACK</button>
+              <button type="button" class="btn btn-primary btn-sm" data-upgrade="${id}" ${!canBuy ? 'disabled' : ''}>
+                ${maxed ? `${msIcon('check')} MAX` : canBuy ? `${pointsLabel(cost)}` : `+${deficit}`}
+              </button>
+            </div>
+          `;
+        }).join('')}
       </div>
     `;
 
-    this.overlay.querySelectorAll('[data-upgrade]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = (btn as HTMLElement).dataset.upgrade as UpgradeId;
-        if (this.upgrades.purchase(id)) {
-          this.audio.playMenuConfirm();
-          this.showToast(`${UPGRADES[id].name} upgraded!`, 'achievement');
-          this.renderUpgrades();
+    const cosmeticsHtml = `
+      <p class="upgrade-hint">Unlock cores, trails, themes, HUD skins, and music with your points.</p>
+      <div class="cosmetic-shop-list">
+        ${COSMETIC_SHOP.map((item) => {
+          const owned = this.save.hasUnlock(item.category, item.id);
+          const canBuy = !owned && credits >= item.price;
+          return `
+            <div class="cosmetic-shop-item ${owned ? 'owned' : ''} ${canBuy ? 'can-buy' : ''}">
+              <div class="cosmetic-shop-info">
+                <span class="cosmetic-shop-name">${item.name}</span>
+                <span class="cosmetic-shop-blurb">${item.blurb}</span>
+                <span class="cosmetic-shop-tag">${item.category.toUpperCase()}</span>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm" data-cosmetic-buy="${item.category}:${item.id}" data-price="${item.price}" ${owned || !canBuy ? 'disabled' : ''}>
+                ${owned ? `${msIcon('check')} Owned` : pointsLabel(item.price)}
+              </button>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+
+    this.overlay.className = 'screen screen-upgrades modal-overlay';
+    this.overlay.innerHTML = syncPanel(`
+      ${modalTitle('Shop', 'storefront')}
+      <p class="upgrade-credits">${msIcon('paid')} ${credits.toLocaleString()} points</p>
+      <div class="shop-tabs" role="tablist">
+        <button type="button" class="shop-tab${tab === 'upgrades' ? ' shop-tab-active' : ''}" data-shop-tab="upgrades" role="tab" aria-selected="${tab === 'upgrades'}">Upgrades</button>
+        <button type="button" class="shop-tab${tab === 'cosmetics' ? ' shop-tab-active' : ''}" data-shop-tab="cosmetics" role="tab" aria-selected="${tab === 'cosmetics'}">Cosmetics</button>
+      </div>
+      ${tab === 'upgrades' ? upgradesHtml : cosmeticsHtml}
+      ${modalActions([{ action: 'back', label: 'Back', icon: 'arrow_back', variant: 'secondary' }])}
+    `, 'panel-scroll shop-panel');
+
+    this.overlay.querySelectorAll('[data-shop-tab]').forEach((btn) => {
+      bindTap(btn, () => {
+        const next = (btn as HTMLElement).dataset.shopTab as 'upgrades' | 'cosmetics';
+        if (next && next !== this.shopTab) {
+          this.audio.playMenuHover();
+          this.renderShop(next);
         }
       });
     });
 
-    this.overlay.querySelector('[data-action="back"]')?.addEventListener('click', () => {
-      this.audio.playMenuConfirm();
-      this.showScreen('menu');
+    this.overlay.querySelectorAll('[data-upgrade]').forEach((btn) => {
+      bindTap(btn, () => {
+        const id = (btn as HTMLElement).dataset.upgrade as UpgradeId;
+        if (this.upgrades.purchase(id)) {
+          this.audio.playMenuConfirm();
+          this.showToast(`${UPGRADES[id].name} upgraded!`, 'achievement');
+          this.renderShop('upgrades');
+        }
+      });
     });
+
+    this.overlay.querySelectorAll('[data-cosmetic-buy]').forEach((btn) => {
+      bindTap(btn, () => {
+        const raw = (btn as HTMLElement).dataset.cosmeticBuy!;
+        const price = parseInt((btn as HTMLElement).dataset.price ?? '0', 10);
+        const [category, id] = raw.split(':') as ['core' | 'trail' | 'theme' | 'hud' | 'music', string];
+        const item = COSMETIC_SHOP.find((c) => c.category === category && c.id === id);
+        if (!item || !this.save.purchaseCosmetic(category, id, price)) return;
+        this.audio.playMenuConfirm();
+        this.save.setCosmetic(category, id);
+        if (category === 'music') this.audio.setMusicPack(id);
+        this.showToast(`${item.name} unlocked & equipped!`, 'achievement');
+        this.renderShop('cosmetics');
+      });
+    });
+
+    const backBtn = this.overlay.querySelector('[data-action="back"]');
+    if (backBtn) {
+      bindTap(backBtn, () => {
+        this.audio.playMenuConfirm();
+        this.showScreen('menu');
+      });
+    }
   }
 
   private renderHelp(): void {
@@ -1474,7 +1541,7 @@ export class UIManager {
 
   private renderSettings(): void {
     const s = this.save.settings;
-    this.overlay.className = 'screen screen-settings modal-overlay';
+    this.overlay.className = 'screen screen-settings modal-overlay settings-stable';
     this.overlay.innerHTML = UI.SIMPLE_MODE ? syncPanel(`
       ${modalTitle('Settings', 'tune')}
       <p class="settings-section-label">Audio</p>
@@ -1487,7 +1554,7 @@ export class UIManager {
         ${this.toggleRow('Reduced Motion', 'reducedMotion', s.reducedMotion)}
       </div>
       ${modalActions([{ action: 'back', label: 'Back', icon: 'arrow_back', variant: 'primary' }])}
-    `, 'panel-scroll') : `
+    `, 'panel-scroll settings-panel-stable', { animate: false }) : `
       <div class="modal panel panel-scroll animate-in">
         <h2 class="modal-title">SETTINGS</h2>
         <div class="settings-group">
@@ -1543,7 +1610,7 @@ export class UIManager {
 
   private bindSettingsEvents(): void {
     this.overlay.querySelectorAll('[data-setting]').forEach((el) => {
-      el.addEventListener('input', () => {
+      const onChange = (): void => {
         const key = (el as HTMLElement).dataset.setting!;
         let value: string | number | boolean;
         if (el instanceof HTMLInputElement && el.type === 'checkbox') {
@@ -1557,7 +1624,20 @@ export class UIManager {
         }
         this.save.updateSettings({ [key]: value } as Partial<GameSettings>);
         this.audio.refresh();
-      });
+        if (key === 'masterVolume' || key === 'musicVolume' || key === 'sfxVolume') {
+          const now = performance.now();
+          if (now - this.volumePreviewAt > 120) {
+            this.volumePreviewAt = now;
+            this.audio.previewVolume(key === 'musicVolume' ? 'music' : key === 'sfxVolume' ? 'sfx' : 'master');
+          }
+        }
+      };
+      el.addEventListener('input', onChange);
+      el.addEventListener('change', onChange);
+      if (el instanceof HTMLInputElement && el.type === 'range') {
+        el.addEventListener('pointerdown', (e) => e.stopPropagation());
+        el.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+      }
     });
 
     const backBtn = this.overlay.querySelector('[data-action="back"]');

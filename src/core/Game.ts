@@ -88,6 +88,8 @@ export class Game {
       document.addEventListener('visibilitychange', this.onVisibilityChange);
       window.addEventListener('pagehide', this.onPageHide);
       window.addEventListener('pageshow', this.onPageShow);
+      window.addEventListener('blur', this.onWindowBlur);
+      window.addEventListener('focus', this.onWindowFocus);
     }
 
     this.ui.setCallbacks({
@@ -222,6 +224,13 @@ export class Game {
     pushSaveToPlayables();
   }
 
+  private pauseForBackground(): void {
+    this.pauseCore();
+    this.audio.setBackgroundMuted(true);
+    this.lastTime = performance.now();
+    this.app.ticker.stop();
+  }
+
   private pauseGame(): void {
     if (this.isPaused || this.scenes.getCurrentId() !== 'game') return;
     this.manualPauseActive = true;
@@ -237,8 +246,11 @@ export class Game {
     this.gameScene.setPaused(false);
     this.input.flushAfterPause();
     this.input.setEnabled(true);
+    this.audio.setBackgroundMuted(false);
     this.audio.setPaused(false);
     this.ui.dismissPauseModal();
+    this.lastTime = performance.now();
+    if (this.running) this.app.ticker.start();
     requestAnimationFrame(() => this.app.canvas.focus());
   }
 
@@ -295,6 +307,7 @@ export class Game {
     this.isPaused = false;
     this.manualPauseActive = false;
     this.autoPausedForBackground = false;
+    this.audio.setBackgroundMuted(false);
     this.ui.dismissPauseModal();
     this.audio.stopMusic();
     this.input.setEnabled(false);
@@ -302,6 +315,7 @@ export class Game {
     this.scenes.leaveCurrent();
     this.ui.showScreen('menu');
     this.ui.showDailyBonusIfAvailable();
+    if (this.running) this.app.ticker.start();
   }
 
   private setCanvasVisible(visible: boolean): void {
@@ -342,24 +356,36 @@ export class Game {
     this.syncBackgroundPauseState();
   };
 
+  private onWindowBlur = (): void => {
+    this.syncBackgroundPauseState();
+  };
+
+  private onWindowFocus = (): void => {
+    this.syncBackgroundPauseState();
+  };
+
   private syncBackgroundPauseState(): void {
-    const hidden = document.visibilityState === 'hidden' || document.hidden;
+    const hidden = document.visibilityState === 'hidden' || document.hidden || !document.hasFocus();
 
     if (hidden) {
       if (!this.isRunEligibleForBackgroundPause() || this.isPaused) return;
       this.autoPausedForBackground = true;
       this.manualPauseActive = false;
-      this.pauseCore();
+      this.pauseForBackground();
       return;
     }
 
     if (!this.autoPausedForBackground) return;
     if (!this.isRunEligibleForBackgroundPause()) {
       this.autoPausedForBackground = false;
+      this.audio.setBackgroundMuted(false);
+      if (this.running) this.app.ticker.start();
       return;
     }
     if (!this.isPaused) {
       this.autoPausedForBackground = false;
+      this.audio.setBackgroundMuted(false);
+      if (this.running) this.app.ticker.start();
       return;
     }
     this.ui.showBackgroundReturnModal();
@@ -407,6 +433,8 @@ export class Game {
       document.removeEventListener('visibilitychange', this.onVisibilityChange);
       window.removeEventListener('pagehide', this.onPageHide);
       window.removeEventListener('pageshow', this.onPageShow);
+      window.removeEventListener('blur', this.onWindowBlur);
+      window.removeEventListener('focus', this.onWindowFocus);
     }
     this.input.destroy();
     this.audio.destroy();

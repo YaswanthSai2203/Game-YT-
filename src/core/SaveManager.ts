@@ -399,6 +399,26 @@ export class SaveManager {
     return true;
   }
 
+  purchaseCosmetic(
+    type: 'core' | 'trail' | 'theme' | 'hud' | 'music',
+    id: string,
+    price: number,
+  ): boolean {
+    if (this.hasUnlock(type, id)) return false;
+    if (this.data.dataCredits < price) return false;
+    const key = type === 'core' ? 'cores'
+      : type === 'trail' ? 'trails'
+      : type === 'theme' ? 'themes'
+      : type === 'hud' ? 'hudSkins'
+      : 'musicPacks';
+    this.data.dataCredits -= price;
+    if (!this.data.unlocks[key].includes(id)) {
+      this.data.unlocks[key].push(id);
+    }
+    this.persist();
+    return true;
+  }
+
 
   hasSeenPickup(pickupId: string): boolean {
     return this.data.worldMemory.seenPickups.includes(pickupId);

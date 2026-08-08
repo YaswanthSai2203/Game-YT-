@@ -68,12 +68,6 @@ async function main(): Promise<void> {
   }
 
   window.addEventListener('beforeunload', () => game.destroy());
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && (game as unknown as { isPaused: boolean }).isPaused === false) {
-      // Auto-pause handled via Game if needed
-    }
-  });
 }
 
 main();

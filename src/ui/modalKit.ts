@@ -9,9 +9,10 @@ export type ModalButton = {
 };
 
 /** Sync Glass panel wrapper — shared modal / game-over shell. */
-export function syncPanel(innerHtml: string, extraClass = ''): string {
-  const cls = ['sync-panel', 'panel', 'animate-in', extraClass].filter(Boolean).join(' ');
-  return `<div class="${cls}">${innerHtml}</div>`;
+export function syncPanel(innerHtml: string, extraClass = '', options?: { animate?: boolean }): string {
+  const cls = ['sync-panel', 'panel', extraClass];
+  if (options?.animate !== false) cls.push('animate-in');
+  return `<div class="${cls.filter(Boolean).join(' ')}">${innerHtml}</div>`;
 }
 
 export function modalTitle(text: string, icon?: string): string {
