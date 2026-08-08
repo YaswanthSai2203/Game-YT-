@@ -193,8 +193,9 @@ body.ui-neon-tactical .arcade-stat-pill {
 }
 
 body.ui-neon-tactical .arcade-stat-pill .ms-icon {
-  font-size: 0.95em;
+  font-size: 1.05em;
   color: var(--color-neonCyan);
+  text-transform: none;
 }
 
 body.ui-neon-tactical .arcade-stat-live {
@@ -256,6 +257,7 @@ body.ui-neon-tactical .arcade-continue-icon {
 
 body.ui-neon-tactical .arcade-continue-icon .ms-icon {
   font-size: 1.4rem;
+  text-transform: none;
 }
 
 body.ui-neon-tactical .arcade-continue-copy {
@@ -416,11 +418,15 @@ body.ui-neon-tactical .arcade-cover-icon {
   position: absolute;
   right: 14px;
   bottom: 12px;
-  font-size: 2rem;
   color: var(--arcade-accent);
   opacity: 0.85;
   filter: drop-shadow(0 0 12px rgba(var(--arcade-accent-rgb), 0.5));
   z-index: 2;
+}
+
+body.ui-neon-tactical .arcade-cover-icon .ms-icon {
+  font-size: 2rem;
+  text-transform: none;
 }
 
 body.ui-neon-tactical .arcade-cover-lock {
@@ -431,8 +437,12 @@ body.ui-neon-tactical .arcade-cover-lock {
   justify-content: center;
   background: rgba(4, 6, 13, 0.55);
   color: var(--color-textSecondary);
-  font-size: 1.5rem;
   z-index: 3;
+}
+
+body.ui-neon-tactical .arcade-cover-lock .ms-icon {
+  font-size: 1.5rem;
+  text-transform: none;
 }
 
 /* Per-game cover scenes (CSS art) */
@@ -597,21 +607,25 @@ body.ui-neon-tactical .arcade-game-featured .arcade-game-desc {
 body.ui-neon-tactical .arcade-game-cta {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   margin-top: 12px;
   padding: 7px 14px;
   border-radius: 999px;
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.1em;
-  text-transform: uppercase;
   background: rgba(var(--arcade-accent-rgb), 0.15);
   border: 1px solid rgba(var(--arcade-accent-rgb), 0.45);
   color: var(--arcade-accent);
 }
 
+body.ui-neon-tactical .arcade-game-cta-label {
+  text-transform: uppercase;
+}
+
 body.ui-neon-tactical .arcade-game-cta .ms-icon {
-  font-size: 0.95em;
+  font-size: 1.1em;
+  text-transform: none;
 }
 
 body.ui-neon-tactical .arcade-game-featured .arcade-game-cta {
