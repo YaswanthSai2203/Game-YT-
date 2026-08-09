@@ -457,14 +457,15 @@ export function drawLaunchHud(
   worldName: string,
   weather: string,
   pulse: number,
+  angleReady = false,
 ): void {
   const pad = 16;
   const bottom = h - Math.max(20, pad);
 
   // Top instruction pill
   const msg = phase === 'aim'
-    ? 'DRAG UP/DOWN TO AIM  ·  TAP TO CHARGE'
-    : 'RELEASE ON PERFECT';
+    ? (angleReady ? 'TAP TO CHARGE POWER' : 'DRAG UP/DOWN TO AIM')
+    : 'TAP OR RELEASE ON PERFECT';
   ctx.fillStyle = 'rgba(10, 14, 26, 0.82)';
   ctx.strokeStyle = 'rgba(0, 240, 255, 0.4)';
   ctx.lineWidth = 1;
