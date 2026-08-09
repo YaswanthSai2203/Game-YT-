@@ -15,7 +15,8 @@
       html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0e1a; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
       #game-container { width: 100%; height: 100%; position: relative; overflow: hidden; touch-action: manipulation; }
       body.gameplay-active #game-container { touch-action: none; }
-      #game-container canvas {
+      /* Pixi NEON PULSE canvas only — mini-games need pointer input on nested canvases */
+      #game-container > canvas {
         display: block; position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0;
         pointer-events: none;
       }

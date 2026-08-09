@@ -113,10 +113,9 @@ export class CatapultChaosGame {
     window.addEventListener('resize', this.boundResize);
     window.addEventListener('keydown', this.boundKeyDown);
     window.addEventListener('keyup', this.boundKeyUp);
-    this.canvas.addEventListener('pointerdown', this.boundPointerDown);
-    this.canvas.addEventListener('pointermove', this.boundPointerMove);
-    this.canvas.addEventListener('pointerup', this.boundPointerUp);
-    this.canvas.addEventListener('pointercancel', this.boundPointerCancel);
+    this.canvas.addEventListener('pointerdown', this.boundPointerDown, { passive: false });
+    this.root.addEventListener('pointerdown', this.boundPointerDown, { passive: false });
+    window.addEventListener('pointermove', this.boundPointerMove, { passive: false });
     window.addEventListener('pointerup', this.boundPointerUp);
     window.addEventListener('pointercancel', this.boundPointerCancel);
 
@@ -361,6 +360,7 @@ export class CatapultChaosGame {
   }
 
   private onPointerDown(e: PointerEvent): void {
+    if ((e.target as HTMLElement).closest('.cc-back, .cc-cta, .cc-ability, .cc-panel')) return;
     this.sfx.ensure();
     if (this.phase === 'aim') {
       e.preventDefault();
@@ -371,7 +371,7 @@ export class CatapultChaosGame {
         startAngle: this.launchAngle,
         moved: false,
       };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.root.setPointerCapture(e.pointerId);
       return;
     }
     if (this.phase === 'power') {
@@ -405,7 +405,7 @@ export class CatapultChaosGame {
       }
       this.aimDrag.active = false;
       try {
-        this.canvas.releasePointerCapture(e.pointerId);
+        this.root.releasePointerCapture(e.pointerId);
       } catch {
         // already released
       }
@@ -658,9 +658,8 @@ export class CatapultChaosGame {
     window.removeEventListener('keydown', this.boundKeyDown);
     window.removeEventListener('keyup', this.boundKeyUp);
     this.canvas.removeEventListener('pointerdown', this.boundPointerDown);
-    this.canvas.removeEventListener('pointermove', this.boundPointerMove);
-    this.canvas.removeEventListener('pointerup', this.boundPointerUp);
-    this.canvas.removeEventListener('pointercancel', this.boundPointerCancel);
+    this.root.removeEventListener('pointerdown', this.boundPointerDown);
+    window.removeEventListener('pointermove', this.boundPointerMove);
     window.removeEventListener('pointerup', this.boundPointerUp);
     window.removeEventListener('pointercancel', this.boundPointerCancel);
     this.root.remove();
