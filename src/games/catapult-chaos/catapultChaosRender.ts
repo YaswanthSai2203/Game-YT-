@@ -445,6 +445,149 @@ export function powerZoneColor(zone: PowerZone): string {
   }
 }
 
+/** In-game launch HUD — drawn on canvas so the world stays visible */
+export function drawLaunchHud(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  phase: 'aim' | 'power',
+  angle: number,
+  powerMeter: number,
+  powerZone: PowerZone,
+  worldName: string,
+  weather: string,
+  pulse: number,
+): void {
+  const pad = 16;
+  const bottom = h - Math.max(20, pad);
+
+  // Top instruction pill
+  const msg = phase === 'aim'
+    ? 'DRAG UP/DOWN TO AIM  ·  TAP TO CHARGE'
+    : 'RELEASE ON PERFECT';
+  ctx.fillStyle = 'rgba(10, 14, 26, 0.82)';
+  ctx.strokeStyle = 'rgba(0, 240, 255, 0.4)';
+  ctx.lineWidth = 1;
+  const pillW = Math.min(340, w - 32);
+  const pillX = (w - pillW) / 2;
+  const pillY = 72;
+  ctx.beginPath();
+  ctx.moveTo(pillX + 12, pillY);
+  ctx.lineTo(pillX + pillW - 12, pillY);
+  ctx.quadraticCurveTo(pillX + pillW, pillY, pillX + pillW, pillY + 12);
+  ctx.lineTo(pillX + pillW, pillY + 36);
+  ctx.quadraticCurveTo(pillX + pillW, pillY + 48, pillX + pillW - 12, pillY + 48);
+  ctx.lineTo(pillX + 12, pillY + 48);
+  ctx.quadraticCurveTo(pillX, pillY + 48, pillX, pillY + 36);
+  ctx.lineTo(pillX, pillY + 12);
+  ctx.quadraticCurveTo(pillX, pillY, pillX + 12, pillY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = CC_PALETTE.magenta;
+  ctx.font = '600 9px Rajdhani, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(worldName.toUpperCase(), w / 2, pillY + 14);
+  ctx.fillStyle = phase === 'power' ? CC_PALETTE.gold : CC_PALETTE.cyan;
+  ctx.font = 'bold 11px Orbitron, sans-serif';
+  ctx.globalAlpha = 0.85 + Math.sin(pulse * 3) * 0.15;
+  ctx.fillText(msg, w / 2, pillY + 34);
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = 'rgba(136, 146, 168, 0.9)';
+  ctx.font = '600 10px Rajdhani, sans-serif';
+  ctx.fillText(weather, w / 2, pillY + 62);
+
+  // Angle gauge (left side)
+  const gx = 36;
+  const gy = h * 0.38;
+  const gh = 120;
+  ctx.fillStyle = 'rgba(10, 14, 26, 0.75)';
+  ctx.strokeStyle = 'rgba(0, 240, 255, 0.3)';
+  ctx.lineWidth = 1;
+  ctx.fillRect(gx - 20, gy - 10, 40, gh + 20);
+  ctx.strokeRect(gx - 20, gy - 10, 40, gh + 20);
+
+  ctx.fillStyle = CC_PALETTE.white;
+  ctx.font = '600 8px Rajdhani, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('ANGLE', gx, gy - 16);
+
+  const angleNorm = (angle - 0.25) / (1.35 - 0.25);
+  const markerY = gy + gh - angleNorm * gh;
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(gx - 8, gy, 16, gh);
+  ctx.fillStyle = CC_PALETTE.cyan;
+  ctx.shadowColor = CC_PALETTE.cyan;
+  ctx.shadowBlur = 10;
+  ctx.fillRect(gx - 10, markerY - 3, 20, 6);
+  ctx.shadowBlur = 0;
+
+  const deg = Math.round((angle * 180) / Math.PI);
+  ctx.fillStyle = CC_PALETTE.cyan;
+  ctx.font = 'bold 12px Orbitron, sans-serif';
+  ctx.fillText(`${deg}°`, gx, gy + gh + 28);
+
+  // Power meter (bottom) — visible during both phases; active during power
+  const barW = Math.min(360, w - 40);
+  const barX = (w - barW) / 2;
+  const barY = bottom - 48;
+  const barH = 18;
+
+  ctx.fillStyle = 'rgba(10, 14, 26, 0.85)';
+  ctx.strokeStyle = 'rgba(0, 240, 255, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.fillRect(barX - 4, barY - 28, barW + 8, 56);
+  ctx.strokeRect(barX - 4, barY - 28, barW + 8, 56);
+
+  ctx.fillStyle = CC_PALETTE.white;
+  ctx.font = '600 9px Rajdhani, sans-serif';
+  ctx.fillText('POWER', w / 2, barY - 14);
+
+  // Zone backgrounds
+  const zones: [number, number, string][] = [
+    [0, 0.25, 'rgba(136,146,168,0.25)'],
+    [0.25, 0.55, 'rgba(76,175,80,0.25)'],
+    [0.55, 0.78, 'rgba(255,213,79,0.35)'],
+    [0.78, 1, 'rgba(255,0,110,0.25)'],
+  ];
+  for (const [a, b, col] of zones) {
+    ctx.fillStyle = col;
+    ctx.fillRect(barX + barW * a, barY, barW * (b - a), barH);
+  }
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(barX, barY, barW, barH);
+
+  if (phase === 'power') {
+    const fillW = barW * powerMeter;
+    ctx.fillStyle = powerZoneColor(powerZone);
+    ctx.shadowColor = powerZoneColor(powerZone);
+    ctx.shadowBlur = 14;
+    ctx.fillRect(barX, barY, fillW, barH);
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = powerZoneColor(powerZone);
+    ctx.font = 'bold 11px Orbitron, sans-serif';
+    ctx.fillText(powerZone.toUpperCase(), w / 2, barY + barH + 18);
+  } else {
+    ctx.fillStyle = 'rgba(0, 240, 255, 0.15)';
+    ctx.fillRect(barX, barY, barW * 0.3, barH);
+    ctx.fillStyle = 'rgba(136, 146, 168, 0.8)';
+    ctx.font = '600 10px Rajdhani, sans-serif';
+    ctx.fillText('Tap when ready', w / 2, barY + barH + 18);
+  }
+
+  const labels = ['Weak', 'Good', 'Perfect', 'Overload'];
+  ctx.font = '600 7px Rajdhani, sans-serif';
+  ctx.fillStyle = 'rgba(136,146,168,0.7)';
+  labels.forEach((lbl, i) => {
+    ctx.fillText(lbl, barX + barW * (0.125 + i * 0.25), barY + barH + 30);
+  });
+}
+
 export function drawGroundFill(
   ctx: CanvasRenderingContext2D,
   w: number,
