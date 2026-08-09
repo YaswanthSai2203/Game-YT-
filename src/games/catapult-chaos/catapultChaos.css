@@ -110,6 +110,10 @@
   color: #ffd54f;
 }
 
+.cc-hud-launch .cc-hud-combo {
+  opacity: 0.35;
+}
+
 .cc-overlay {
   position: absolute;
   inset: 0;

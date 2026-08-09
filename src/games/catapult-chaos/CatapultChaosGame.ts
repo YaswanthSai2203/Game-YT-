@@ -5,12 +5,12 @@ import {
   drawCatapult,
   drawFloatingText,
   drawGroundFill,
+  drawLaunchHud,
   drawPlayer,
   drawSky,
   drawTrajectoryPreview,
   drawWindIndicator,
   drawWorldObject,
-  powerZoneColor,
 } from '@/games/catapult-chaos/catapultChaosRender';
 import { ComboManager } from '@/games/catapult-chaos/systems/ComboManager';
 import { PhysicsWorld } from '@/games/catapult-chaos/systems/PhysicsWorld';
@@ -40,7 +40,7 @@ export class CatapultChaosGame {
   private paused = false;
   private lastTs = 0;
 
-  private phase: GamePhase = 'intro';
+  private phase: GamePhase = 'aim';
   private physics = new PhysicsWorld();
   private combo = new ComboManager();
   private score = new ScoreManager();
@@ -90,8 +90,6 @@ export class CatapultChaosGame {
 
     this.root.querySelector('[data-action="hub"]')?.addEventListener('click', () => this.onExitToHub?.());
     this.root.querySelector('[data-action="retry"]')?.addEventListener('click', () => this.startRun());
-    this.root.querySelector('[data-action="start"]')?.addEventListener('click', () => this.enterPrepare());
-    this.root.querySelector('#cc-power-btn')?.addEventListener('click', () => this.beginPowerPhase());
     this.root.querySelector('#cc-ability')?.addEventListener('click', () => this.useAbility());
 
     window.addEventListener('resize', this.boundResize);
@@ -103,6 +101,8 @@ export class CatapultChaosGame {
 
     this.resize();
     this.initLevel();
+    this.beginLaunchSetup();
+    this.root.querySelector('#cc-overlay')?.classList.add('cc-overlay-hidden');
     this.running = true;
     this.lastTs = performance.now();
     this.raf = requestAnimationFrame((t) => this.loop(t));
@@ -121,29 +121,7 @@ export class CatapultChaosGame {
         </div>
       </div>
       <canvas class="cc-canvas" aria-label="Catapult Chaos"></canvas>
-      <div class="cc-overlay" id="cc-overlay">
-        <div class="cc-panel" id="cc-panel-intro">
-          <p class="cc-eyebrow">World 1 — Green Valley</p>
-          <h1 class="cc-title">CATAPULT CHAOS</h1>
-          <p class="cc-sub">Every shot is a calculated disaster.</p>
-          <p class="cc-hint">Aim · Power · Air control · Chain reactions</p>
-          <button type="button" class="cc-cta" data-action="start">Enter range</button>
-        </div>
-        <div class="cc-panel hidden" id="cc-panel-prepare">
-          <p class="cc-eyebrow">Prepare launch</p>
-          <p class="cc-prepare-wind" id="cc-wind-text"></p>
-          <p class="cc-hint">Drag to aim · Tap when ready for power</p>
-          <button type="button" class="cc-cta" id="cc-power-btn">Set power</button>
-        </div>
-        <div class="cc-power-ui hidden" id="cc-power-ui">
-          <p class="cc-power-label">Release on PERFECT</p>
-          <div class="cc-power-track">
-            <div class="cc-power-zones">
-              <span>Weak</span><span>Good</span><span>Perfect</span><span>Overload</span>
-            </div>
-            <div class="cc-power-bar"><div class="cc-power-fill" id="cc-power-fill"></div></div>
-          </div>
-        </div>
+      <div class="cc-overlay cc-overlay-hidden" id="cc-overlay">
         <div class="cc-panel hidden" id="cc-panel-results">
           <p class="cc-eyebrow">Run complete</p>
           <p class="cc-results-total" id="cc-results-total">0</p>
@@ -179,32 +157,35 @@ export class CatapultChaosGame {
     this.groundY = h * 0.72;
   }
 
-  private enterPrepare(): void {
-    this.phase = 'prepare';
-    this.showPanel('cc-panel-prepare');
-    const windEl = this.root.querySelector('#cc-wind-text');
-    if (windEl) {
-      const kmh = Math.abs(GREEN_VALLEY_LEVEL.wind * 40).toFixed(0);
-      const dir = GREEN_VALLEY_LEVEL.wind > 0 ? '→' : '←';
-      windEl.textContent = `Wind ${kmh} km/h ${dir} · ${GREEN_VALLEY_LEVEL.weather}`;
-    }
+  private beginLaunchSetup(): void {
     this.initLevel();
     this.combo.reset();
     this.score.reset();
     this.launchAngle = 0.75;
+    this.powerMeter = 0;
+    this.powerDir = 1;
     this.phase = 'aim';
+    this.camX = 0;
+    this.camY = 0;
+    this.root.querySelector('#cc-overlay')?.classList.add('cc-overlay-hidden');
+    this.root.querySelector('#cc-ability')?.classList.add('hidden');
+    const p = this.physics.player;
+    p.x = GREEN_VALLEY_LEVEL.catapult.x + 60;
+    p.y = this.groundY - 50;
+    p.vx = 0;
+    p.vy = 0;
+    p.alive = true;
+    p.momentum = 'stable';
   }
 
   private startRun(): void {
     this.hideAllPanels();
-    this.enterPrepare();
-    this.phase = 'aim';
+    this.root.querySelector('#cc-overlay')?.classList.add('cc-overlay-hidden');
+    this.beginLaunchSetup();
   }
 
   private beginPowerPhase(): void {
     this.phase = 'power';
-    this.root.querySelector('#cc-panel-prepare')?.classList.add('hidden');
-    this.root.querySelector('#cc-power-ui')?.classList.remove('hidden');
     this.powerMeter = 0;
     this.powerDir = 1;
   }
@@ -219,8 +200,6 @@ export class CatapultChaosGame {
     this.physics.launchPlayer(vx, vy);
     this.score.setPrecision(this.powerZone === 'perfect', this.powerZone === 'perfect' ? 2500 : this.powerZone === 'good' ? 800 : 0);
     this.phase = 'flying';
-    this.root.querySelector('#cc-power-ui')?.classList.add('hidden');
-    this.root.querySelector('#cc-overlay')?.classList.add('cc-overlay-hidden');
     this.root.querySelector('#cc-ability')?.classList.remove('hidden');
     this.abilityReady = true;
     this.abilityTimer = 0;
@@ -276,7 +255,7 @@ export class CatapultChaosGame {
   }
 
   private hideAllPanels(): void {
-    this.root.querySelectorAll('.cc-panel, #cc-power-ui').forEach((el) => el.classList.add('hidden'));
+    this.root.querySelectorAll('.cc-panel').forEach((el) => el.classList.add('hidden'));
   }
 
   private onKeyDown(e: KeyboardEvent): void {
@@ -320,8 +299,7 @@ export class CatapultChaosGame {
   }
 
   private handlePrimaryAction(): void {
-    if (this.phase === 'intro') this.enterPrepare();
-    else if (this.phase === 'aim') this.beginPowerPhase();
+    if (this.phase === 'aim') this.beginPowerPhase();
     else if (this.phase === 'power') this.releasePower();
     else if (this.phase === 'results') this.startRun();
   }
@@ -373,11 +351,12 @@ export class CatapultChaosGame {
       else if (this.powerMeter < 0.55) this.powerZone = 'good';
       else if (this.powerMeter < 0.78) this.powerZone = 'perfect';
       else this.powerZone = 'overload';
-      const fill = this.root.querySelector('#cc-power-fill') as HTMLElement | null;
-      if (fill) {
-        fill.style.width = `${this.powerMeter * 100}%`;
-        fill.style.background = powerZoneColor(this.powerZone);
-      }
+    }
+
+    // Keep camera on launch site during aim/power so player sees catapult + trajectory
+    if (this.phase === 'aim' || this.phase === 'power') {
+      this.camX += (0 - this.camX) * 0.12 * dt;
+      this.camY += (0 - this.camY) * 0.12 * dt;
     }
 
     if (this.phase === 'flying' || this.phase === 'settling') {
@@ -444,6 +423,12 @@ export class CatapultChaosGame {
       if (comboEl) comboEl.textContent = `×${this.combo.combo}`;
     }
 
+    if (this.phase === 'aim' || this.phase === 'power') {
+      this.root.querySelector('#cc-hud')?.classList.add('cc-hud-launch');
+    } else {
+      this.root.querySelector('#cc-hud')?.classList.remove('cc-hud-launch');
+    }
+
     for (const ft of this.floatTexts) {
       ft.y -= 0.8 * dt;
       ft.life -= 0.018 * dt;
@@ -466,8 +451,9 @@ export class CatapultChaosGame {
       drawWorldObject(ctx, o, this.camX, this.camY, this.physics.time);
     }
 
-    if (this.phase === 'aim' || this.phase === 'prepare' || this.phase === 'power') {
-      const power = 11 + this.powerMeter * 14;
+    if (this.phase === 'aim' || this.phase === 'power') {
+      const power = 11 + (this.phase === 'power' ? this.powerMeter : 0.65) * 14;
+      const armPull = this.phase === 'power' ? 0.15 + this.powerMeter * 0.35 : 0;
       drawTrajectoryPreview(
         ctx,
         catapultX + 60,
@@ -478,8 +464,18 @@ export class CatapultChaosGame {
         this.camX,
         this.camY,
       );
-      drawCatapult(ctx, catapultX - this.camX, catapultY - this.camY, this.launchAngle, this.phase === 'power' ? 0.3 : 0);
-      drawPlayer(ctx, this.physics.player, this.camX, this.camY, 'stable', true);
+      drawCatapult(ctx, catapultX - this.camX, catapultY - this.camY, this.launchAngle, armPull);
+
+      // Character in bucket
+      const bucketX = catapultX + 60 + Math.cos(-this.launchAngle) * (8 + armPull * 20);
+      const bucketY = this.groundY - 50 + Math.sin(-this.launchAngle) * (8 + armPull * 20);
+      const bucketPlayer = { ...this.physics.player, x: bucketX, y: bucketY, angle: -this.launchAngle + 0.3 };
+      drawPlayer(ctx, bucketPlayer, this.camX, this.camY, 'stable', false);
+
+      drawLaunchHud(
+        ctx, w, h, this.phase, this.launchAngle, this.powerMeter, this.powerZone,
+        level.world, level.weather, this.pulse,
+      );
     } else {
       drawCatapult(ctx, catapultX - this.camX, catapultY - this.camY, 0.5, 0);
       drawPlayer(ctx, this.physics.player, this.camX, this.camY, this.physics.player.momentum, false);
@@ -487,15 +483,6 @@ export class CatapultChaosGame {
 
     drawFloatingText(ctx, this.floatTexts, this.camX, this.camY);
     drawWindIndicator(ctx, w, level.wind);
-
-    if (this.phase === 'intro') {
-      ctx.fillStyle = CC_PALETTE.cyan;
-      ctx.globalAlpha = 0.4 + Math.sin(this.pulse * 3) * 0.15;
-      ctx.font = '600 11px Rajdhani, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('▶  TAP TO START', w / 2, h * 0.55);
-      ctx.globalAlpha = 1;
-    }
   }
 
   destroy(): void {
