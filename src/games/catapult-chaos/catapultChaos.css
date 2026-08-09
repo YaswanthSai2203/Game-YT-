@@ -314,6 +314,20 @@
   animation: cc-record-pulse 1.5s ease-in-out infinite;
 }
 
+.cc-results-tips {
+  margin-bottom: 12px;
+  text-align: left;
+}
+
+.cc-result-tip {
+  font-size: 0.78rem;
+  color: #00f0ff;
+  margin: 0 0 6px;
+  padding-left: 12px;
+  border-left: 2px solid rgba(0, 240, 255, 0.35);
+  line-height: 1.4;
+}
+
 .cc-results-near {
   font-size: 0.78rem;
   color: #8892a8;

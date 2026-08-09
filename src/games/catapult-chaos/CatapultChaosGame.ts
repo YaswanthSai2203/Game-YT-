@@ -3,16 +3,21 @@ import { buildGreenValleyObjects, GREEN_VALLEY_LEVEL } from '@/games/catapult-ch
 import {
   CC_PALETTE,
   drawCatapult,
+  drawComboBanner,
   drawFloatingText,
   drawGroundFill,
   drawLaunchHud,
+  drawParticles,
   drawPlayer,
+  drawScreenFlash,
   drawSky,
   drawTrajectoryPreview,
   drawWindIndicator,
   drawWorldObject,
 } from '@/games/catapult-chaos/catapultChaosRender';
+import { CatapultSfx } from '@/games/catapult-chaos/systems/CatapultSfx';
 import { ComboManager } from '@/games/catapult-chaos/systems/ComboManager';
+import { FeelEffects } from '@/games/catapult-chaos/systems/FeelEffects';
 import { PhysicsWorld } from '@/games/catapult-chaos/systems/PhysicsWorld';
 import { ScoreManager } from '@/games/catapult-chaos/systems/ScoreManager';
 import type { GamePhase, PowerZone, ScoreBreakdown } from '@/games/catapult-chaos/types';
@@ -20,6 +25,8 @@ import type { GameHandle, GameLaunchOptions, GameModule } from '@/games/types';
 import '@/games/catapult-chaos/catapultChaos.css';
 
 const HI_KEY = 'catapult-chaos-hi';
+const HI_COMBO_KEY = 'catapult-chaos-hi-combo';
+const DIST_MILESTONES = [500, 1000, 2000, 3500, 5000];
 
 interface FloatText {
   x: number;
@@ -46,6 +53,12 @@ export class CatapultChaosGame {
   private score = new ScoreManager();
   private characterId = DEFAULT_CHARACTER;
   private hiScore = 0;
+  private hiCombo = 0;
+  private sfx = new CatapultSfx();
+  private feel = new FeelEffects();
+  private lastPowerZone: PowerZone = 'good';
+  private shakeX = 0;
+  private shakeY = 0;
 
   private groundY = 0;
   private launchAngle = 0.75;
@@ -79,6 +92,7 @@ export class CatapultChaosGame {
     this.container = container;
     this.onExitToHub = options?.onExitToHub ?? null;
     this.hiScore = parseInt(localStorage.getItem(HI_KEY) ?? '0', 10) || 0;
+    this.hiCombo = parseInt(localStorage.getItem(HI_COMBO_KEY) ?? '0', 10) || 0;
 
     this.root = document.createElement('div');
     this.root.className = 'cc-root';
@@ -134,6 +148,7 @@ export class CatapultChaosGame {
           <p class="cc-results-total" id="cc-results-total">0</p>
           <div class="cc-results-grid" id="cc-results-grid"></div>
           <p class="cc-results-record hidden" id="cc-results-record">NEW PERSONAL BEST</p>
+          <div class="cc-results-tips" id="cc-results-tips"></div>
           <p class="cc-results-near hidden" id="cc-results-near"></p>
           <button type="button" class="cc-cta" data-action="retry">Play again</button>
         </div>
@@ -168,6 +183,8 @@ export class CatapultChaosGame {
     this.initLevel();
     this.combo.reset();
     this.score.reset();
+    this.feel.reset();
+    this.lastPowerZone = 'good';
     this.launchAngle = 0.75;
     this.powerMeter = 0;
     this.powerDir = 1;
@@ -208,6 +225,21 @@ export class CatapultChaosGame {
     this.physics.player.mass = charDef.mass;
     this.physics.launchPlayer(vx, vy);
     this.score.setPrecision(this.powerZone === 'perfect', this.powerZone === 'perfect' ? 2500 : this.powerZone === 'good' ? 800 : 0);
+    const perfect = this.powerZone === 'perfect';
+    this.sfx.launch(perfect);
+    if (perfect) {
+      this.feel.bumpFlash('#ffd54f', 0.35);
+      this.feel.bumpShake(6);
+      this.feel.spawnBurst(
+        GREEN_VALLEY_LEVEL.catapult.x + 60,
+        this.groundY - 50,
+        '#ffd54f',
+        14,
+        5,
+      );
+    } else {
+      this.feel.bumpShake(3);
+    }
     this.phase = 'flying';
     this.root.querySelector('#cc-ability')?.classList.remove('hidden');
     this.abilityReady = true;
@@ -223,11 +255,28 @@ export class CatapultChaosGame {
     this.root.querySelector('#cc-ability')?.classList.add('hidden');
     const bd = this.score.breakdown();
     const isRecord = bd.total > this.hiScore;
+    const comboRecord = this.score.stats.maxCombo > this.hiCombo;
     if (isRecord) {
       this.hiScore = bd.total;
       localStorage.setItem(HI_KEY, String(this.hiScore));
+      this.sfx.resultsRecord();
+    }
+    if (comboRecord) {
+      this.hiCombo = this.score.stats.maxCombo;
+      localStorage.setItem(HI_COMBO_KEY, String(this.hiCombo));
     }
     this.showResults(bd, isRecord);
+  }
+
+  private countCoinsLeft(): number {
+    return this.physics.objects.filter((o) => o.type === 'coin' && o.alive).length;
+  }
+
+  private nextDistanceGoal(meters: number): number | null {
+    for (const m of DIST_MILESTONES) {
+      if (meters < m) return m;
+    }
+    return null;
   }
 
   private showResults(bd: ScoreBreakdown, isRecord: boolean): void {
@@ -247,13 +296,29 @@ export class CatapultChaosGame {
     }
     const rec = this.root.querySelector('#cc-results-record');
     rec?.classList.toggle('hidden', !isRecord);
+
+    const tipsEl = this.root.querySelector('#cc-results-tips');
+    const tips: string[] = [];
+    const meters = this.score.stats.maxDistance;
+    const coinsLeft = this.countCoinsLeft();
+    const nextDist = this.nextDistanceGoal(meters);
+
+    if (coinsLeft > 0) tips.push(`${coinsLeft} coin${coinsLeft > 1 ? 's' : ''} still out there`);
+    if (nextDist) tips.push(`${(nextDist - meters).toLocaleString()}m to ${nextDist.toLocaleString()}m goal`);
+    if (this.score.stats.maxCombo < this.hiCombo && this.hiCombo > 0) {
+      tips.push(`Beat your ×${this.hiCombo} combo record`);
+    }
+    if (!isRecord && this.hiScore > 0) {
+      tips.push(`${(this.hiScore - bd.total).toLocaleString()} pts from personal best`);
+    }
+    if (tipsEl) {
+      tipsEl.innerHTML = tips.map((t) => `<p class="cc-result-tip">${t}</p>`).join('');
+    }
+
     const near = this.root.querySelector('#cc-results-near');
-    if (near && !isRecord && this.hiScore > 0) {
-      const gap = this.hiScore - bd.total;
-      near.textContent = `${gap.toLocaleString()} from your best — chain more combos!`;
-      near.classList.remove('hidden');
-    } else {
-      near?.classList.add('hidden');
+    if (near) {
+      near.textContent = tips.length > 0 ? 'One more run could change everything.' : '';
+      near.classList.toggle('hidden', tips.length === 0);
     }
   }
 
@@ -296,6 +361,7 @@ export class CatapultChaosGame {
   }
 
   private onPointerDown(e: PointerEvent): void {
+    this.sfx.ensure();
     if (this.phase === 'aim') {
       e.preventDefault();
       this.aimDrag = {
@@ -367,6 +433,8 @@ export class CatapultChaosGame {
     this.abilityReady = false;
     this.abilityTimer = CHARACTERS[this.characterId]!.abilityCooldown * 60;
     const r = this.combo.registerStyle('Grapple', 600);
+    this.sfx.grapple();
+    this.feel.bumpShake(4);
     this.addFloatText(p.x, p.y - 20, `+${r.points}  Hook`, CC_PALETTE.violet);
     this.slowMo = 0.4;
   }
@@ -377,6 +445,10 @@ export class CatapultChaosGame {
 
   pause(): void { this.paused = true; }
   resume(): void { this.paused = false; this.lastTs = performance.now(); }
+
+  setAudioMuted(muted: boolean): void {
+    this.sfx.setMuted(muted);
+  }
 
   private loop(ts: number): void {
     if (!this.running) return;
@@ -401,9 +473,16 @@ export class CatapultChaosGame {
       else if (this.powerMeter < 0.55) this.powerZone = 'good';
       else if (this.powerMeter < 0.78) this.powerZone = 'perfect';
       else this.powerZone = 'overload';
+      if (this.powerZone === 'perfect' && this.lastPowerZone !== 'perfect') {
+        this.sfx.powerTick('perfect');
+      }
+      this.lastPowerZone = this.powerZone;
     }
 
-    // Keep camera on launch site during aim/power so player sees catapult + trajectory
+    const shake = this.feel.tick(dt);
+    this.shakeX = shake.shakeX;
+    this.shakeY = shake.shakeY;
+
     if (this.phase === 'aim' || this.phase === 'power') {
       this.camX += (0 - this.camX) * 0.12 * dt;
       this.camY += (0 - this.camY) * 0.12 * dt;
@@ -431,14 +510,42 @@ export class CatapultChaosGame {
       }
 
       for (const ev of this.physics.drainEvents()) {
+        const p = this.physics.player;
         const r = this.combo.register(ev);
         if (r) {
           this.addFloatText(p.x, p.y - 24, `+${r.points}  ×${r.combo}`, CC_PALETTE.cyan);
-          if (ev.kind === 'break') this.score.addDestruction(r.points);
-          if (ev.kind === 'collect' && ev.objectType === 'coin') this.score.addCoin();
+          if (ev.kind === 'break') {
+            this.score.addDestruction(r.points);
+            this.sfx.break();
+            this.feel.bumpShake(5);
+            this.feel.spawnBurst(p.x, p.y, '#8d6e4a', 10, 4);
+          }
+          if (ev.kind === 'collect' && ev.objectType === 'coin') {
+            this.score.addCoin();
+            this.sfx.coin();
+            this.feel.spawnBurst(p.x, p.y, '#ffd54f', 6, 3);
+          }
+          if (ev.kind === 'bounce') {
+            this.sfx.bounce();
+            this.feel.bumpShake(3);
+          }
+          if (ev.kind === 'explode') {
+            this.sfx.explode();
+            this.feel.bumpShake(12);
+            this.feel.bumpFlash('#ff006e', 0.25);
+            this.feel.spawnBurst(p.x, p.y, '#ff006e', 18, 7);
+            this.slowMo = 0.45;
+          }
+          if (r.combo >= 3) {
+            this.sfx.combo(r.combo);
+            this.feel.showCombo(r.combo);
+          }
           if (r.combo >= 5) this.slowMo = 0.35;
         }
         if (ev.kind === 'kill') {
+          this.sfx.crash();
+          this.feel.bumpShake(14);
+          this.feel.bumpFlash('#ff5252', 0.4);
           this.phase = 'settling';
         }
       }
@@ -494,6 +601,9 @@ export class CatapultChaosGame {
     const catapultX = level.catapult.x;
     const catapultY = this.groundY - 28;
 
+    ctx.save();
+    ctx.translate(this.shakeX, this.shakeY);
+
     drawSky(ctx, w, h, this.camX);
     drawGroundFill(ctx, w, h, this.groundY - this.camY);
 
@@ -532,7 +642,13 @@ export class CatapultChaosGame {
     }
 
     drawFloatingText(ctx, this.floatTexts, this.camX, this.camY);
+    drawParticles(ctx, this.feel.particles, this.camX, this.camY);
     drawWindIndicator(ctx, w, level.wind);
+    drawComboBanner(ctx, w, this.feel.comboBannerLevel, this.feel.comboBanner);
+
+    ctx.restore();
+
+    drawScreenFlash(ctx, w, h, this.feel.flash, this.feel.flashColor);
   }
 
   destroy(): void {
@@ -556,7 +672,9 @@ class CatapultChaosHandle implements GameHandle {
   destroy(): void { this.game.destroy(); }
   handlePlayablesPause(): void { this.game.pause(); }
   handlePlayablesResume(): void { this.game.resume(); }
-  handlePlayablesAudio(): void { /* no audio yet */ }
+  handlePlayablesAudio(enabled: boolean): void {
+    this.game.setAudioMuted(!enabled);
+  }
 }
 
 export async function launch(container: HTMLElement, options?: GameLaunchOptions): Promise<GameHandle> {

@@ -389,6 +389,60 @@ export function drawTrajectoryPreview(
   ctx.restore();
 }
 
+export function drawParticles(
+  ctx: CanvasRenderingContext2D,
+  particles: { x: number; y: number; life: number; size: number; color: string }[],
+  camX: number,
+  camY: number,
+): void {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = p.life * 0.85;
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(p.x - camX, p.y - camY, p.size * p.life, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+export function drawScreenFlash(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  alpha: number,
+  color: string,
+): void {
+  if (alpha <= 0) return;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.globalAlpha = alpha;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+}
+
+export function drawComboBanner(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  level: number,
+  life: number,
+): void {
+  if (life <= 0 || level < 3) return;
+  const scale = 0.9 + life * 0.15;
+  ctx.save();
+  ctx.translate(w / 2, 108);
+  ctx.scale(scale, scale);
+  ctx.textAlign = 'center';
+  ctx.font = '900 28px Orbitron, sans-serif';
+  ctx.fillStyle = `rgba(255, 213, 79, ${life})`;
+  ctx.shadowColor = '#ffd54f';
+  ctx.shadowBlur = 24;
+  ctx.fillText(`×${level} COMBO`, 0, 0);
+  ctx.restore();
+}
+
 export function drawFloatingText(
   ctx: CanvasRenderingContext2D,
   texts: { x: number; y: number; text: string; life: number; color: string }[],
