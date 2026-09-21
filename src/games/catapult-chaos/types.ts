@@ -1,6 +1,6 @@
 /** CATAPULT CHAOS — shared types */
 
-export type GamePhase = 'intro' | 'prepare' | 'aim' | 'power' | 'flying' | 'settling' | 'results';
+export type GamePhase = 'intro' | 'launch' | 'flying' | 'settling' | 'results';
 
 export type MomentumState = 'stable' | 'hurt' | 'critical';
 

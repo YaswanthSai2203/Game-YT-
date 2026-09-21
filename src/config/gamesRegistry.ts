@@ -52,6 +52,16 @@ export const GAME_CATALOG: GameCatalogEntry[] = [
     accent: 'gold',
   },
   {
+    id: 'neon-snake',
+    title: 'NEON SNAKE',
+    tagline: 'Grid classic',
+    description: 'Classic Nokia Snake remastered — colorful arcade grid, swipe or keys.',
+    genre: 'Puzzle',
+    status: 'available',
+    icon: 'grid_view',
+    accent: 'violet',
+  },
+  {
     id: 'void-drift',
     title: 'VOID DRIFT',
     tagline: 'Endless flyer',

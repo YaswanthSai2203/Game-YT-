@@ -1,5 +1,6 @@
 import type { GameMode } from '@/types';
 import { LEADERBOARD, getLeaderboardApiBase, isGlobalLeaderboardEnabled } from '@/config/leaderboardConfig';
+import { sanitizeLeaderboardName } from '@/utils/sanitizeLeaderboardName';
 
 export interface GlobalLeaderboardEntry {
   rank: number;
@@ -61,7 +62,7 @@ export class GlobalLeaderboardService {
       const res = await fetch(`${getLeaderboardApiBase()}/scores`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ mode, score, name: name.slice(0, 24) || 'Pilot' }),
+        body: JSON.stringify({ mode, score, name: sanitizeLeaderboardName(name) }),
       });
       if (!res.ok) {
         return { ok: false, error: `http_${res.status}` };

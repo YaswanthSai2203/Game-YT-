@@ -9,6 +9,7 @@ export interface MilestoneStatus {
   available: boolean;
 }
 
+/** Read-only community milestone — increments happen server-side on validated score submit. */
 export class CommunityMilestoneService {
   private baseUrl: string;
 
@@ -40,20 +41,6 @@ export class CommunityMilestoneService {
       };
     } catch {
       return fallback;
-    }
-  }
-
-  async contribute(shards: number): Promise<boolean> {
-    if (shards <= 0 || isYouTubePlayablesRuntime()) return false;
-    try {
-      const res = await fetch(`${this.baseUrl}/api/milestone`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shards: Math.min(shards, 500) }),
-      });
-      return res.ok;
-    } catch {
-      return false;
     }
   }
 }

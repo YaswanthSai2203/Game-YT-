@@ -2,7 +2,7 @@ import type { PowerupType } from '@/types';
 import type { RealityModifiers } from '@/systems/QuantumRealitySystem';
 import { DIFFICULTY, POWERUP, PICKUP, SCROLL, UI } from '@/config/constants';
 import { pickPattern, type PatternDef, type SpawnCmd } from '@/config/patternLibrary';
-import { createRng, randomInt, lerp, smoothstep } from '@/utils/math';
+import { createRng, lerp, smoothstep } from '@/utils/math';
 
 export type SpawnEntityType = 'firewall' | 'shard' | 'powerup' | 'vault' | 'white_firewall' | 'score_boost' | 'bomb';
 
@@ -35,6 +35,7 @@ export class SpawnerSystem {
   private mercyPulse = false;
   private titanTimer = 0;
   private assistShardsPending = 0;
+  private maxLane = 2;
 
   constructor(seed?: number) {
     this.rng = seed !== undefined ? createRng(seed) : Math.random;
@@ -51,6 +52,15 @@ export class SpawnerSystem {
 
   setMercyPulse(active: boolean): void {
     this.mercyPulse = active;
+  }
+
+  /** When the myth fourth lane is active, obstacles can spawn in lane 3 too. */
+  setMaxLane(lane: number): void {
+    this.maxLane = clampLane(lane);
+  }
+
+  private randInt(min: number, max: number): number {
+    return Math.floor(this.rng() * (max - min + 1)) + min;
   }
 
   queueAssistShard(): void {
@@ -129,7 +139,7 @@ export class SpawnerSystem {
     }
 
     while (this.assistShardsPending > 0) {
-      this.spawnEntity('shard', randomInt(0, 2));
+      this.spawnEntity('shard', this.randInt(0, this.maxLane));
       this.assistShardsPending--;
     }
   }
@@ -146,7 +156,7 @@ export class SpawnerSystem {
   }
 
   spawnWhiteFirewall(lane?: number): void {
-    const l = lane ?? randomInt(0, 2);
+    const l = lane ?? this.randInt(0, this.maxLane);
     this.spawnEntity('white_firewall', l, { width: 80, height: 28 });
   }
 
@@ -169,34 +179,40 @@ export class SpawnerSystem {
 
   private executePattern(pattern: PatternDef): void {
     const fwWeight = (this.modifiers?.firewallWeight ?? 1) * (this.directorMods?.firewallWeight ?? 1);
+    const safeLane = this.randInt(0, this.maxLane);
+    let stepIndex = 0;
+
     for (const step of pattern.steps) {
       if (step.type === 'wait') continue;
       if (step.type === 'firewall' && this.rng() > fwWeight) continue;
-      const lane = this.resolveLane(step);
+
+      const lane = this.resolveLane(step, safeLane);
       if (lane === null) continue;
       if (step.type === 'firewall' && this.isLaneBlocked(lane)) continue;
-      this.spawnEntity(step.type as SpawnEntityType, lane);
+
+      this.spawnEntity(step.type as SpawnEntityType, lane, { yOffset: -stepIndex * 72 });
+      stepIndex++;
     }
   }
 
-  private resolveLane(cmd: SpawnCmd): number | null {
-    if (typeof cmd.lane === 'number') return cmd.lane;
-    if (cmd.lane === 'random') return randomInt(0, 2);
-    if (cmd.lane === 'gap') return randomInt(0, 2);
-    if (cmd.lane === 'all') return randomInt(0, 2);
+  private resolveLane(cmd: SpawnCmd, safeLane: number): number | null {
+    if (typeof cmd.lane === 'number') return clampLane(cmd.lane);
+    if (cmd.lane === 'random') return this.randInt(0, this.maxLane);
+    if (cmd.lane === 'gap') return safeLane;
+    if (cmd.lane === 'all') return this.randInt(0, this.maxLane);
     return null;
   }
 
   private maybeSpawnBonusPickup(): void {
     if (this.rng() < POWERUP.SPAWN_CHANCE) {
-      const lane = randomInt(0, 2);
+      const lane = this.randInt(0, this.maxLane);
       if (!this.isLaneBlocked(lane)) {
         this.spawnEntity('powerup', lane);
       }
     }
 
     if (this.elapsed >= PICKUP.MIN_SPAWN_TIME) {
-      const lane = randomInt(0, 2);
+      const lane = this.randInt(0, this.maxLane);
       if (!this.isLaneBlocked(lane)) {
         const roll = this.rng();
         if (roll < PICKUP.BONUS_SPAWN_CHANCE) {
@@ -209,7 +225,7 @@ export class SpawnerSystem {
 
     const vaultChance = this.modifiers?.vaultChance ?? 0.005;
     if (this.elapsed > 40 && this.rng() < vaultChance) {
-      this.spawnEntity('vault', randomInt(0, 2));
+      this.spawnEntity('vault', this.randInt(0, this.maxLane));
     }
   }
 
@@ -220,8 +236,8 @@ export class SpawnerSystem {
 
     if (style === 'mercy' || fwWeight < 0.7) {
       if (this.rng() < 0.55) {
-        this.spawnEntity('shard', randomInt(0, 2));
-        if (this.rng() < 0.45) this.spawnEntity('shard', randomInt(0, 2));
+        this.spawnEntity('shard', this.randInt(0, this.maxLane));
+        if (this.rng() < 0.45) this.spawnEntity('shard', this.randInt(0, this.maxLane));
         return;
       }
     }
@@ -232,8 +248,8 @@ export class SpawnerSystem {
     }
 
     if (fwWeight < 0.7 && this.rng() < 0.45) {
-      this.spawnEntity('shard', randomInt(0, 2));
-      if (this.rng() < 0.4) this.spawnEntity('shard', randomInt(0, 2));
+      this.spawnEntity('shard', this.randInt(0, this.maxLane));
+      if (this.rng() < 0.4) this.spawnEntity('shard', this.randInt(0, this.maxLane));
       return;
     }
 
@@ -245,12 +261,12 @@ export class SpawnerSystem {
 
     switch (patternLevel) {
       case 1:
-        if (this.rng() < fwWeight) this.spawnEntity('firewall', randomInt(0, 2));
-        this.spawnEntity('shard', randomInt(0, 2));
+        if (this.rng() < fwWeight) this.spawnEntity('firewall', this.randInt(0, this.maxLane));
+        this.spawnEntity('shard', this.randInt(0, this.maxLane));
         break;
       case 2:
         this.spawnDualObstacle();
-        this.spawnEntity('shard', randomInt(0, 2));
+        this.spawnEntity('shard', this.randInt(0, this.maxLane));
         break;
       case 3:
         if (style === 'hunter') this.spawnGapPattern();
@@ -268,28 +284,28 @@ export class SpawnerSystem {
   private spawnWarmupPattern(): void {
     const roll = this.rng();
     if (roll < 0.5) {
-      const shardLane = randomInt(0, 2);
+      const shardLane = this.randInt(0, this.maxLane);
       this.spawnEntity('shard', shardLane);
-      const fwLane = (shardLane + 1 + randomInt(0, 1)) % 3;
+      const fwLane = (shardLane + 1 + this.randInt(0, 1)) % (this.maxLane + 1);
       if (fwLane !== shardLane && this.rng() < (this.modifiers?.firewallWeight ?? 1)) {
         this.spawnEntity('firewall', fwLane);
       }
     } else {
-      this.spawnEntity('shard', randomInt(0, 2));
+      this.spawnEntity('shard', this.randInt(0, this.maxLane));
     }
   }
 
   private spawnDualObstacle(): void {
-    const blocked = randomInt(0, 2);
+    const blocked = this.randInt(0, this.maxLane);
     const fwWeight = (this.modifiers?.firewallWeight ?? 1) * (this.directorMods?.firewallWeight ?? 1);
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i <= this.maxLane; i++) {
       if (i !== blocked && this.rng() < fwWeight) this.spawnEntity('firewall', i);
       else this.spawnEntity('shard', i);
     }
   }
 
   private spawnTriplePattern(): void {
-    const pattern = randomInt(0, 2);
+    const pattern = this.randInt(0, 2);
     if (pattern === 0) {
       this.spawnEntity('firewall', 0);
       this.spawnEntity('firewall', 2);
@@ -306,8 +322,8 @@ export class SpawnerSystem {
   }
 
   private spawnGapPattern(): void {
-    const safeLane = randomInt(0, 2);
-    for (let i = 0; i < 3; i++) {
+    const safeLane = this.randInt(0, this.maxLane);
+    for (let i = 0; i <= this.maxLane; i++) {
       if (i !== safeLane) this.spawnEntity('firewall', i);
     }
     this.spawnEntity('shard', safeLane);
@@ -320,10 +336,10 @@ export class SpawnerSystem {
     } else if (r < 0.6) {
       this.spawnGapPattern();
       if (this.rng() < (this.modifiers?.firewallWeight ?? 1)) {
-        this.spawnEntity('firewall', randomInt(0, 2));
+        this.spawnEntity('firewall', this.randInt(0, this.maxLane));
       }
     } else {
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i <= this.maxLane; i++) {
         if (this.rng() > 0.4) {
           this.spawnEntity(this.rng() > 0.5 ? 'firewall' : 'shard', i);
         }
@@ -332,8 +348,8 @@ export class SpawnerSystem {
   }
 
   private spawnTitanBoss(): void {
-    const gapLane = randomInt(0, 2);
-    for (let i = 0; i < 3; i++) {
+    const gapLane = this.randInt(0, this.maxLane);
+    for (let i = 0; i <= this.maxLane; i++) {
       if (i === gapLane) {
         this.spawnEntity('shard', i, { isBoss: false });
       } else {
@@ -349,15 +365,16 @@ export class SpawnerSystem {
   private spawnEntity(
     type: SpawnEntityType,
     lane: number,
-    opts?: Partial<Pick<SpawnedEntity, 'isBoss' | 'isGolden' | 'isQuantumVault' | 'width' | 'height'>>,
+    opts?: Partial<Pick<SpawnedEntity, 'isBoss' | 'isGolden' | 'isQuantumVault' | 'width' | 'height'>> & { yOffset?: number },
   ): void {
     const powerupTypes: PowerupType[] = ['shield', 'magnet', 'overclock', 'chronos'];
     const golden = this.modifiers?.goldenStorm ?? false;
+    const yOffset = opts?.yOffset ?? 0;
     const entity: SpawnedEntity = {
       id: nextId++,
       type,
-      lane,
-      y: (this.modifiers?.reverseFlow ?? false) ? 800 : -60,
+      lane: clampLane(lane),
+      y: ((this.modifiers?.reverseFlow ?? false) ? 800 : -60) + yOffset,
       width: type === 'shard' ? 24 : type === 'powerup' ? 28 : type === 'score_boost' || type === 'bomb' ? 26 : 80,
       height: type === 'firewall' ? 24 : type === 'vault' ? 40 : type === 'score_boost' || type === 'bomb' ? 26 : 24,
       collected: false,
@@ -367,7 +384,7 @@ export class SpawnerSystem {
     };
 
     if (type === 'powerup') {
-      entity.powerupType = powerupTypes[randomInt(0, powerupTypes.length - 1)];
+      entity.powerupType = powerupTypes[this.randInt(0, powerupTypes.length - 1)];
     }
 
     if (type === 'white_firewall') {
@@ -403,5 +420,10 @@ export class SpawnerSystem {
     this.titanTimer = 8;
     this.assistShardsPending = 0;
     this.mercyPulse = false;
+    this.maxLane = 2;
   }
+}
+
+function clampLane(lane: number): number {
+  return Math.max(0, Math.min(3, Math.floor(lane)));
 }

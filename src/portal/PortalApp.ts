@@ -18,13 +18,21 @@ export class PortalApp {
   private legal: LegalPages | null = null;
   private activeGame: GameHandle | null = null;
   private popStateHandler = () => this.handleRouteChange();
+  private loadNeonPulseFonts: (() => Promise<void>) | null = null;
+  private visibilityHandler = (): void => {
+    if (!this.activeGame) return;
+    if (document.hidden) this.activeGame.handlePlayablesPause();
+    else this.activeGame.handlePlayablesResume();
+  };
 
   constructor(container: HTMLElement) {
     this.container = container;
     window.addEventListener('popstate', this.popStateHandler);
+    document.addEventListener('visibilitychange', this.visibilityHandler);
   }
 
-  async init(): Promise<void> {
+  async init(onBeforeNeonPulse?: () => Promise<void>): Promise<void> {
+    this.loadNeonPulseFonts = onBeforeNeonPulse ?? null;
     await hydrateSaveFromPlayables();
     const directId = this.resolveDirectLaunchId();
     if (directId) {
@@ -94,6 +102,10 @@ export class PortalApp {
     this.clearContainer();
     this.setPortalSurface(false);
 
+    if (gameId === 'neon-pulse' && this.loadNeonPulseFonts) {
+      await this.loadNeonPulseFonts();
+    }
+
     const mod = await loadGameModule(gameId);
     if (!mod) {
       this.showHub();
@@ -153,6 +165,7 @@ export class PortalApp {
 
   destroy(): void {
     window.removeEventListener('popstate', this.popStateHandler);
+    document.removeEventListener('visibilitychange', this.visibilityHandler);
     this.hub?.destroy();
     this.legal?.destroy();
     this.activeGame?.destroy();

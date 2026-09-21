@@ -43,6 +43,7 @@ export class OfflineRexGame {
   private speed = 6;
   private groundY = 0;
   private score = 0;
+  private scoreAcc = 0;
   private hiScore = 0;
   private spawnTimer = 0;
   private obstacles: Obstacle[] = [];
@@ -62,6 +63,8 @@ export class OfflineRexGame {
   private lastScoreMilestone = 0;
   private wasGrounded = true;
   private scoreCancel: (() => void) | null = null;
+  private pointerStartY = 0;
+  private pointerActive = false;
 
   private readonly gravity = 0.65;
   private readonly jumpForce = -12.5;
@@ -73,7 +76,9 @@ export class OfflineRexGame {
 
   private boundResize = (): void => this.resize();
   private boundKey = (e: KeyboardEvent): void => this.onKey(e);
-  private boundPointer = (): void => this.onTap();
+  private boundPointerDown = (e: PointerEvent): void => this.onPointerDown(e);
+  private boundPointerMove = (e: PointerEvent): void => this.onPointerMove(e);
+  private boundPointerUp = (): void => this.onPointerUp();
 
   constructor(container: HTMLElement, options?: GameLaunchOptions) {
     this.container = container;
@@ -105,7 +110,7 @@ export class OfflineRexGame {
           <p class="mg-eyebrow">Signal lost</p>
           <h1 class="mg-title">OFFLINE REX</h1>
           <p class="mg-sub">The grid is down. Keep running until sync fails.</p>
-          <p class="mg-hint">Tap to jump · Hold ↓ to duck under drones</p>
+          <p class="mg-hint">Tap to jump · Swipe down to duck under drones</p>
           <button type="button" class="mg-cta" id="offline-rex-start">Start run</button>
         </div>
         <div class="mg-panel hidden" id="offline-rex-panel-dead">
@@ -151,7 +156,10 @@ export class OfflineRexGame {
 
     window.addEventListener('resize', this.boundResize);
     window.addEventListener('keydown', this.boundKey);
-    this.canvas.addEventListener('pointerdown', this.boundPointer);
+    this.canvas.addEventListener('pointerdown', this.boundPointerDown, { passive: false });
+    window.addEventListener('pointermove', this.boundPointerMove, { passive: false });
+    window.addEventListener('pointerup', this.boundPointerUp);
+    window.addEventListener('pointercancel', this.boundPointerUp);
 
     this.resize();
   }
@@ -168,6 +176,9 @@ export class OfflineRexGame {
   }
 
   private resize(): void {
+    const wasAirborne = this.phase === 'playing' && !this.isGrounded();
+    const airHeight = wasAirborne ? this.groundY - this.dinoStandH - this.dinoY : 0;
+
     const dpr = Math.min(window.devicePixelRatio, 2);
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
@@ -177,8 +188,13 @@ export class OfflineRexGame {
     this.canvas.style.height = `${h}px`;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.groundY = h - Math.max(56, h * 0.14);
-    this.dinoY = this.groundY - this.dinoStandH;
     this.dinoX = Math.max(56, w * 0.12);
+
+    if (wasAirborne) {
+      this.dinoY = this.groundY - this.dinoStandH - airHeight;
+    } else {
+      this.dinoY = this.groundY - (this.ducking ? this.dinoDuckH : this.dinoStandH);
+    }
   }
 
   private onKey(e: KeyboardEvent): void {
@@ -196,6 +212,33 @@ export class OfflineRexGame {
   private onKeyUp = (e: KeyboardEvent): void => {
     if (e.code === 'ArrowDown' || e.code === 'KeyS') this.ducking = false;
   };
+
+  private onPointerDown(e: PointerEvent): void {
+    if (this.paused) return;
+    this.sfx.ensure();
+    this.pointerActive = true;
+    this.pointerStartY = e.clientY;
+
+    if (this.phase === 'intro' || this.phase === 'dead') {
+      this.startRun();
+      return;
+    }
+
+    if (this.phase === 'playing' && this.isGrounded() && !this.ducking) {
+      this.dinoVy = this.jumpForce;
+      this.sfx.jump();
+    }
+  }
+
+  private onPointerMove(e: PointerEvent): void {
+    if (!this.pointerActive || this.phase !== 'playing') return;
+    this.ducking = e.clientY - this.pointerStartY > 36;
+  }
+
+  private onPointerUp(): void {
+    this.pointerActive = false;
+    this.ducking = false;
+  }
 
   private onTap(): void {
     if (this.paused) return;
@@ -219,6 +262,7 @@ export class OfflineRexGame {
     this.scoreCancel = null;
     this.phase = 'playing';
     this.score = 0;
+    this.scoreAcc = 0;
     this.scoreAnim.snap(0);
     this.lastScoreMilestone = 0;
     this.speed = 6;
@@ -324,7 +368,12 @@ export class OfflineRexGame {
     this.speed = Math.min(14, this.speed + step * 0.002);
     this.groundOffset = (this.groundOffset + this.speed * step) % 48;
     this.bgOffset += this.speed * step * 0.35;
-    this.score += Math.floor(step * this.speed * 0.35);
+    this.scoreAcc += step * this.speed * 0.35;
+    const gained = Math.floor(this.scoreAcc);
+    if (gained > 0) {
+      this.score += gained;
+      this.scoreAcc -= gained;
+    }
     this.scoreAnim.set(this.score);
     this.scoreAnim.tick(step);
     this.updateScoreDisplay();
@@ -470,7 +519,10 @@ export class OfflineRexGame {
     window.removeEventListener('resize', this.boundResize);
     window.removeEventListener('keydown', this.boundKey);
     window.removeEventListener('keyup', this.onKeyUp);
-    this.canvas.removeEventListener('pointerdown', this.boundPointer);
+    this.canvas.removeEventListener('pointerdown', this.boundPointerDown);
+    window.removeEventListener('pointermove', this.boundPointerMove);
+    window.removeEventListener('pointerup', this.boundPointerUp);
+    window.removeEventListener('pointercancel', this.boundPointerUp);
     this.root.remove();
   }
 }
