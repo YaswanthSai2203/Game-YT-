@@ -1,0 +1,151 @@
+/**
+ * NEON PULSE — premium polish layer (buttons, splash, loading, panels)
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+body.ui-neon-tactical {
+  --pulse-font-display: 'Syne', 'Orbitron', sans-serif;
+  --pulse-font-body: 'Plus Jakarta Sans', 'Rajdhani', sans-serif;
+  --pulse-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --pulse-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Animated menu backdrop mesh */
+body.ui-neon-tactical .screen-menu-simple.sync-hub-v2 {
+  background:
+    radial-gradient(ellipse 90% 60% at 15% 0%, rgba(155, 109, 255, 0.1), transparent 55%),
+    radial-gradient(ellipse 80% 50% at 90% 10%, rgba(0, 212, 232, 0.08), transparent 50%),
+    linear-gradient(180deg, rgba(10, 14, 26, 0.82) 0%, rgba(10, 14, 26, 0.96) 50%, rgba(7, 10, 18, 0.99) 100%);
+}
+
+body.ui-neon-tactical .screen-splash-v2,
+body.ui-neon-tactical .screen-loading {
+  background:
+    radial-gradient(ellipse 100% 70% at 50% -20%, rgba(0, 212, 232, 0.12), transparent 55%),
+    radial-gradient(ellipse 80% 50% at 80% 80%, rgba(232, 54, 122, 0.08), transparent 45%),
+    linear-gradient(180deg, #070a12 0%, #0a0e1a 100%);
+}
+
+body.ui-neon-tactical .screen-splash-v2 .splash-title {
+  font-family: var(--pulse-font-display);
+  letter-spacing: 0.08em;
+}
+
+body.ui-neon-tactical .screen-splash-v2 .splash-subtitle,
+body.ui-neon-tactical .screen-splash-v2 .splash-tap-hint {
+  font-family: var(--pulse-font-body);
+}
+
+body.ui-neon-tactical .screen-splash-v2 .splash-pulse {
+  box-shadow:
+    0 0 24px rgba(0, 212, 232, 0.25),
+    inset 0 0 12px rgba(0, 212, 232, 0.15);
+}
+
+/* Tactile buttons */
+body.ui-neon-tactical .btn {
+  font-family: var(--pulse-font-body);
+  transition:
+    transform 150ms var(--pulse-ease-out),
+    box-shadow 220ms var(--pulse-ease-out),
+    border-color 150ms var(--pulse-ease-out),
+    background 220ms var(--pulse-ease-out);
+}
+
+body.ui-neon-tactical .btn-primary {
+  background: linear-gradient(165deg, rgba(0, 212, 232, 0.95) 0%, rgba(0, 153, 176, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow:
+    0 4px 18px rgba(0, 212, 232, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  animation: pulse-cta-glow 2.6s ease-in-out infinite;
+}
+
+@keyframes pulse-cta-glow {
+  0%, 100% { box-shadow: 0 4px 18px rgba(0, 212, 232, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+  50% { box-shadow: 0 6px 26px rgba(0, 212, 232, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  body.ui-neon-tactical .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 8px 28px rgba(0, 212, 232, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  }
+
+  body.ui-neon-tactical .mode-card-simple:hover {
+    transform: translateY(-2px);
+  }
+}
+
+body.ui-neon-tactical .btn-primary:active,
+body.ui-neon-tactical .mode-card-simple:active {
+  transform: scale(0.98);
+}
+
+body.ui-neon-tactical .mode-card-simple {
+  background: linear-gradient(168deg, rgba(22, 30, 50, 0.95) 0%, rgba(12, 16, 28, 0.92) 100%);
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition:
+    transform 150ms var(--pulse-ease-out),
+    border-color 150ms var(--pulse-ease-out),
+    box-shadow 220ms var(--pulse-ease-out);
+}
+
+body.ui-neon-tactical .mode-card-featured {
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.4),
+    0 0 32px rgba(0, 212, 232, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+body.ui-neon-tactical .sync-panel {
+  background: linear-gradient(168deg, rgba(22, 30, 50, 0.98) 0%, rgba(10, 14, 26, 0.99) 100%);
+  box-shadow:
+    0 20px 56px rgba(0, 0, 0, 0.55),
+    0 0 40px rgba(0, 212, 232, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+body.ui-neon-tactical .gameover-panel-v2 .gameover-score-hero {
+  font-family: var(--pulse-font-display);
+  transition: color 320ms var(--pulse-ease-out), text-shadow 320ms var(--pulse-ease-out);
+}
+
+body.ui-neon-tactical .hud-score {
+  font-family: var(--pulse-font-display);
+  transition: color 180ms var(--pulse-ease-out), transform 180ms var(--pulse-spring);
+}
+
+body.ui-neon-tactical .hud-score.score-punch {
+  animation: score-punch-v2 380ms var(--pulse-spring);
+}
+
+@keyframes score-punch-v2 {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.12); color: var(--color-neonGold); }
+  100% { transform: scale(1); }
+}
+
+body.ui-neon-tactical .screen-loading .loading-bar-fill {
+  background: linear-gradient(90deg, var(--color-neonCyan), var(--color-neonViolet));
+  box-shadow: 0 0 12px rgba(0, 212, 232, 0.45);
+  transition: width 120ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.ui-neon-tactical .btn-primary,
+  body.ui-neon-tactical .hud-score.score-punch {
+    animation: none;
+  }
+
+  body.ui-neon-tactical .btn,
+  body.ui-neon-tactical .mode-card-simple,
+  body.ui-neon-tactical .hud-score {
+    transition: none;
+  }
+}

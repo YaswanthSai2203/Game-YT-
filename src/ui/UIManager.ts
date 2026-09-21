@@ -13,6 +13,8 @@ import { analyzePlaystyle } from '@/utils/playstyleAnalysis';
 import { RUN_THEME_LORE, getLoreWhisperSuffix, type RunThemeId, type GridMood } from '@/config/directorConfig';
 import { LEADERBOARD } from '@/config/leaderboardConfig';
 import { formatScore, formatTime } from '@/utils/math';
+import { escapeHtml } from '@/utils/escapeHtml';
+import { animateScoreElement } from '@/games/shared/animateScore';
 import { isCompactUI } from '@/utils/uiMode';
 import { msIcon, pointsLabel } from '@/utils/icons';
 import { bindImmediatePress, bindTap } from '@/utils/tap';
@@ -57,6 +59,8 @@ export class UIManager {
   private investigationFocusId: string | null = null;
   private lastScorePunchAt = 0;
   private lastHypeAt = 0;
+  private displayedScore = 0;
+  private scoreAnimCancel: (() => void) | null = null;
   private tutorialDismissResolve: (() => void) | null = null;
   private pauseModalEl: HTMLElement | null = null;
   private shopTab: 'upgrades' | 'cosmetics' = 'upgrades';
@@ -308,7 +312,15 @@ export class UIManager {
     const challengeText = this.overlay.querySelector('#hud-challenge-text');
     const comboCount = stats.comboCount ?? 0;
 
-    if (scoreEl) scoreEl.textContent = formatScore(stats.score);
+    if (scoreEl) {
+      const diff = stats.score - this.displayedScore;
+      if (Math.abs(diff) > 0.5) {
+        this.displayedScore += diff * 0.18;
+      } else {
+        this.displayedScore = stats.score;
+      }
+      scoreEl.textContent = formatScore(Math.round(this.displayedScore));
+    }
     if (timeEl) {
       if (stats.timeLimit > 0) {
         const remaining = Math.max(0, stats.timeLimit - stats.timeAlive);
@@ -994,10 +1006,6 @@ export class UIManager {
       : 'Connect Redis on Vercel for live community progress';
   }
 
-  contributeToMilestone(shards: number): void {
-    void this.milestoneSvc.contribute(shards);
-  }
-
   /** Gentle one-time tips — clear without spoiling Grid mysteries. */
   private showMenuHints(dailyReady: boolean, canAffordUpgrade: boolean): void {
     if (UI.SIMPLE_MODE) return;
@@ -1075,6 +1083,7 @@ export class UIManager {
   }
 
   private renderHUD(): void {
+    this.displayedScore = 0;
     const compact = isCompactUI();
     const skin = getHudSkin(compact ? 'minimal' : (this.save.save.unlocks.selectedHudSkin ?? 'default'));
     this.overlay.className = `screen screen-hud ghost-hud ${skin.cssClass}${compact ? ' hud-compact' : ''}`;
@@ -1435,7 +1444,7 @@ export class UIManager {
     this.overlay.innerHTML = syncPanel(`
       <p class="gameover-eyebrow">${title}</p>
       ${data.newHighScore ? '<div class="new-high-badge">★ New best score ★</div>' : ''}
-      <div class="${scoreClass}">${formatScore(data.score)}</div>
+      <div class="${scoreClass}" id="gameover-score-animate">${formatScore(0)}</div>
       <div class="gameover-stats-row">
         ${heroMetric('Shards', String(data.shards), 'cyan')}
         ${heroMetric('Time', formatTime(data.timeAlive), 'violet')}
@@ -1446,6 +1455,14 @@ export class UIManager {
         { action: 'menu', label: 'Menu', icon: 'home', variant: 'secondary' },
       ])}
     `, 'gameover-panel gameover-panel-simple gameover-panel-v2');
+
+    const scoreEl = this.overlay.querySelector('#gameover-score-animate') as HTMLElement | null;
+    if (scoreEl) {
+      this.scoreAnimCancel?.();
+      this.scoreAnimCancel = animateScoreElement(scoreEl, data.score, {
+        formatter: (n) => formatScore(n),
+      });
+    }
 
     this.bindGameOverActions(data);
   }
@@ -1486,8 +1503,6 @@ export class UIManager {
       this.renderSimpleGameOver(data);
       return;
     }
-    const rank = data.rankPercentile ?? 0;
-    const rankMsg = rank >= 90 ? 'ELITE PILOT' : rank >= 70 ? 'SKILLED RUNNER' : rank >= 40 ? 'RISING SYNC' : 'KEEP TRAINING';
     const unlocks = data.syncUnlocks ?? [];
     const signalFragments = data.signalFragments ?? 0;
     const decodeReady = InvestigationService.countAvailable(this.save.save);
@@ -1517,7 +1532,6 @@ export class UIManager {
         ${unlocks.length > 0 ? `<div class="unlock-banner">${unlocks.map((u) => `<span>🔓 ${u} UNLOCKED</span>`).join('')}</div>` : ''}
         ${(data.realitiesDiscovered?.length ?? 0) > 0 ? `<div class="reality-discovered-banner"><span>🌀 REALITIES DISCOVERED</span>${data.realitiesDiscovered!.map((r) => `<span class="reality-tag">${r.replace(/_/g, ' ')}</span>`).join('')}</div>` : ''}
         ${(this.save.save.worldMemory.mythsWitnessed.length > 0) ? `<div class="reality-discovered-banner myths-banner"><span>??? WITNESSED</span>${this.save.save.worldMemory.mythsWitnessed.map((m) => `<span class="reality-tag">${m.replace(/_/g, ' ')}</span>`).join('')}</div>` : ''}
-        <div class="rank-badge">TOP ${rank}% · ${rankMsg}</div>
         <div class="stats-grid">
           <div class="stat-item"><span class="stat-label">SCORE</span><span class="stat-value">${formatScore(data.score)}</span></div>
           <div class="stat-item"><span class="stat-label">SHARDS</span><span class="stat-value">${data.shards}</span></div>
@@ -1543,11 +1557,9 @@ export class UIManager {
     });
     this.bindGameOverActions(data);
 
-    if (data.newHighScore || (data.rankPercentile ?? 0) >= 85) {
+    if (data.newHighScore) {
       this.spawnConfetti();
-      if (data.newHighScore) {
-        this.showHypeCallout({ title: 'NEW RECORD!', subtitle: formatScore(data.score), tier: 5, color: 'gold' });
-      }
+      this.showHypeCallout({ title: 'NEW RECORD!', subtitle: formatScore(data.score), tier: 5, color: 'gold' });
     }
   }
 
@@ -1735,7 +1747,7 @@ export class UIManager {
           ${entries.map((e, i) => `
             <li class="lb-entry">
               <span class="lb-rank">#${e.rank ?? i + 1}</span>
-              <span class="lb-name">${e.name ?? 'Pilot'}</span>
+              <span class="lb-name">${escapeHtml(e.name ?? 'Pilot')}</span>
               <span class="lb-score">${formatScore(e.score)}</span>
               <span class="lb-date">${new Date(e.date).toLocaleDateString()}</span>
             </li>

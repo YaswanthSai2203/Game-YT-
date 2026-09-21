@@ -9,7 +9,6 @@ import { AudioManager } from '@/core/AudioManager';
 import { SaveManager } from '@/core/SaveManager';
 import { AchievementManager } from '@/core/AchievementManager';
 import { UpgradeManager } from '@/core/UpgradeManager';
-import { estimateRankPercentile } from '@/core/SaveManager';
 import { SpawnerSystem } from '@/systems/SpawnerSystem';
 import { ComboSystem } from '@/systems/ComboSystem';
 import { ParticleSystem } from '@/systems/ParticleSystem';
@@ -130,6 +129,8 @@ export class GameScene extends BaseScene {
   private mercyPulseTimer = 0;
   private seasonalShardMult = 1;
   private quantumCorePhase = 0;
+  private pendingTimers: ReturnType<typeof setTimeout>[] = [];
+  private exited = false;
 
   private unsubscribers: (() => void)[] = [];
 
@@ -162,6 +163,9 @@ export class GameScene extends BaseScene {
   }
 
   override exit(): void {
+    this.exited = true;
+    for (const id of this.pendingTimers) clearTimeout(id);
+    this.pendingTimers = [];
     this.audio.stopMusic();
     this.unbindInput();
     this.clearEntities();
@@ -264,6 +268,7 @@ export class GameScene extends BaseScene {
   }
 
   private resetGame(): void {
+    this.exited = false;
     this.container.removeChildren();
     this.entityGraphics.clear();
     this.activePowerups = [];
@@ -512,6 +517,7 @@ export class GameScene extends BaseScene {
     this.sentient.onComboHigh(this.combo.getCombo());
     this.reality.setPunishLanes(this.sentient.shouldPunishLeftHabit(), this.sentient.shouldPunishRightHabit());
     this.fourthLaneActive = this.myth.isFourthLaneActive();
+    this.spawner.setMaxLane(this.fourthLaneActive ? 3 : 2);
     this.updateLaneLayout();
     this.spawner.setModifiers(this.reality.getModifiers());
     this.spawner.update(scaledDt, this.gameHeight);
@@ -598,18 +604,16 @@ export class GameScene extends BaseScene {
     }
   }
 
+  private scheduleTimeout(fn: () => void, ms: number): void {
+    const id = setTimeout(() => {
+      this.pendingTimers = this.pendingTimers.filter((t) => t !== id);
+      if (!this.exited) fn();
+    }, ms);
+    this.pendingTimers.push(id);
+  }
+
   private async handleImpossibleCrash(): Promise<void> {
-    this.gamePausedForEvent = true;
-    this.events.emit('ui:impossible_crash', {});
-    await new Promise((r) => setTimeout(r, 5500));
-    this.events.emit('ui:hype', {
-      title: 'JUST KIDDING',
-      subtitle: 'Welcome to the Null Zone',
-      tier: 5,
-      color: 'magenta',
-    });
     this.reality.enterNullZone();
-    this.gamePausedForEvent = false;
   }
 
   private updateGhostRival(dt: number): void {
@@ -679,12 +683,6 @@ export class GameScene extends BaseScene {
   private onRareEventEnd(type: string): void {
     if (type === 'ghost_rival' && this.ghostBonusTimer >= 3) {
       this.addScore(300, this.playerX, this.playerY - 40);
-      this.events.emit('ui:hype', {
-        title: 'RIVAL OUTRUN!',
-        subtitle: '+300 ghost bonus',
-        tier: 3,
-        color: 'magenta',
-      });
     }
   }
 
@@ -863,18 +861,18 @@ export class GameScene extends BaseScene {
     for (const entity of this.spawner.getEntities()) {
       if (!entity.active || entity.collected) continue;
 
-      const ex = this.laneCenters[entity.lane];
+      const ex = this.laneCenters[entity.lane] ?? this.playerX;
       const ey = entity.y;
 
-      if (entity.lane !== this.playerLane && entity.type !== 'shard' && entity.type !== 'vault' && entity.type !== 'white_firewall') {
-        if (entity.type === 'powerup') {
-          const magnetActive = this.activePowerups.some((p) => p.type === 'magnet');
-          if (!magnetActive) continue;
+      if (entity.type === 'powerup') {
+        const magnetActive = this.activePowerups.some((p) => p.type === 'magnet');
+        if (!magnetActive) {
+          const laneReach = Math.abs(this.laneCenters[1] - this.laneCenters[0]) * 0.55;
+          if (Math.abs(ex - this.playerX) > laneReach) continue;
+        } else {
           const magnetRange = POWERUP.MAGNET_RANGE * this.upgrades.getMagnetRangeMultiplier();
           const dist = Math.abs(ex - this.playerX) + Math.abs(ey - this.playerY);
           if (dist > magnetRange) continue;
-        } else {
-          continue;
         }
       }
 
@@ -956,7 +954,6 @@ export class GameScene extends BaseScene {
         this.popScore(this.playerX, this.playerY - 30, SCORING.NEAR_MISS_BONUS, COLORS.gold);
         this.audio.playNearMiss();
         this.reality.onNearMiss();
-        this.events.emit('ui:hype', { title: 'EDGE RUNNER!', subtitle: `+${SCORING.NEAR_MISS_BONUS} near miss`, tier: 2, color: 'gold' });
         this.shakeAmount = Math.max(this.shakeAmount, 5);
         this.particles.burst(this.playerX, this.playerY - 20, COLORS.gold, 12, 180);
         this.particles.impactRing(this.playerX, this.playerY - 20, COLORS.gold, 35);
@@ -975,12 +972,10 @@ export class GameScene extends BaseScene {
       [90, 'ELITE RUNNER', 'The grid bends to your will', 3],
       [120, 'QUANTUM MASTER', 'Transcendent sync achieved', 4],
     ];
-    for (const [sec, title, subtitle, tier] of checks) {
+    for (const [sec, title, , tier] of checks) {
       if (this.timeAlive >= sec && !this.milestonesHit.has(sec)) {
         this.milestonesHit.add(sec);
         this.events.emit('milestone:reach', { label: title });
-        this.events.emit('ui:hype', { title, subtitle, tier, color: 'violet' });
-        this.audio.playHype(tier);
         if (tier >= 2) this.shakeAmount = Math.max(this.shakeAmount, tier * 2);
       }
     }
@@ -995,12 +990,10 @@ export class GameScene extends BaseScene {
       [2.5, 'WARP SPEED', 'Speed ×2.5', 4],
       [3.0, 'MAX OVERDRIVE', 'Absolute terminal velocity', 5],
     ];
-    for (const [threshold, title, subtitle, tier] of tiers) {
+    for (const [threshold, , , tier] of tiers) {
       const key = Math.round(threshold * 10);
       if (mult >= threshold && !this.speedTiersHit.has(key)) {
         this.speedTiersHit.add(key);
-        this.events.emit('ui:hype', { title, subtitle, tier, color: 'cyan' });
-        this.audio.playHype(tier);
         if (!this.save.settings.reducedMotion) {
           this.shakeAmount = Math.max(this.shakeAmount, tier * 2);
           this.events.emit('ui:flash', { color: 'rgba(0,240,255,0.15)', duration: 120 });
@@ -1026,7 +1019,9 @@ export class GameScene extends BaseScene {
       this.events.emit('ui:flash', { color: 'rgba(0,255,136,0.35)', duration: 200 });
       this.audio.playShieldBreak();
       this.audio.setEmotionalLayer('piano', true);
-      setTimeout(() => this.audio.setEmotionalLayer('piano', false), 2000);
+      this.scheduleTimeout(() => {
+        if (!this.exited) this.audio.setEmotionalLayer('piano', false);
+      }, 2000);
       return;
     }
 
@@ -1092,35 +1087,23 @@ export class GameScene extends BaseScene {
 
   private checkComboHype(): void {
     const c = this.combo.getCombo();
-    for (const tier of HYPE_COMBO_TIERS) {
-      if (c < tier.combo || this.comboHypeHit.has(tier.combo)) continue;
-      this.comboHypeHit.add(tier.combo);
-      this.events.emit('ui:hype', {
-        title: tier.title,
-        subtitle: tier.subtitle,
-        tier: tier.tier,
-        color: tier.tier >= 4 ? 'magenta' : tier.tier >= 2 ? 'gold' : 'cyan',
-      });
-      this.audio.playHype(tier.tier);
-      this.shakeAmount = Math.max(this.shakeAmount, tier.tier * 2.5);
-      if (tier.tier >= 3 && !this.save.settings.reducedMotion) {
-        this.particles.burst(this.playerX, this.playerY, COLORS.gold, 16 + tier.tier * 4, 280);
-        this.events.emit('ui:flash', { color: 'rgba(0,240,255,0.2)', duration: 150 });
-      }
-    }
+    const first = HYPE_COMBO_TIERS[0];
+    if (c < first.combo || this.comboHypeHit.has(first.combo)) return;
+    this.comboHypeHit.add(first.combo);
+    this.events.emit('ui:hype', {
+      title: first.title,
+      subtitle: first.subtitle,
+      tier: first.tier,
+      color: 'cyan',
+    });
+    this.audio.playHype(first.tier);
+    this.shakeAmount = Math.max(this.shakeAmount, first.tier * 2.5);
   }
 
   private checkChallengeVictory(): void {
     const target = this.config.targetScore ?? 0;
     if (target <= 0 || this.challengeComplete || this.score < target) return;
     this.challengeComplete = true;
-    this.events.emit('ui:hype', {
-      title: 'TARGET SYNCED!',
-      subtitle: 'Daily challenge crushed — keep pushing!',
-      tier: 5,
-      color: 'cyan',
-    });
-    this.audio.playHype(5);
     this.shakeAmount = Math.max(this.shakeAmount, 10);
     this.events.emit('ui:flash', { color: 'rgba(0,255,136,0.3)', duration: 300 });
   }
@@ -1137,12 +1120,6 @@ export class GameScene extends BaseScene {
     this.scoreBoostTimer = PICKUP.SCORE_BOOST_DURATION;
     this.audio.playPowerup();
     this.particles.burst(this.playerX, this.playerY, COLORS.gold, 18, 220);
-    this.events.emit('ui:hype', {
-      title: '2× SYNC!',
-      subtitle: 'Double points for 10 seconds',
-      tier: 3,
-      color: 'gold',
-    });
   }
 
   private collectBomb(entityId: number): void {
@@ -1153,12 +1130,6 @@ export class GameScene extends BaseScene {
     this.shakeAmount = Math.max(this.shakeAmount, 14);
     this.events.emit('ui:flash', { color: 'rgba(255,0,80,0.35)', duration: 180 });
     this.particles.burst(this.playerX, this.playerY, COLORS.red, 22, 280);
-    this.events.emit('ui:hype', {
-      title: 'DATA TRAP!',
-      subtitle: `−${PICKUP.BOMB_PENALTY} points`,
-      tier: 1,
-      color: 'magenta',
-    });
   }
 
   private subtractScore(amount: number, popupX?: number, popupY?: number): void {
@@ -1178,18 +1149,6 @@ export class GameScene extends BaseScene {
     this.audio.playPowerup();
     this.events.emit('powerup:activate', { type });
     this.particles.burst(this.playerX, this.playerY, COLORS.gold, 14, 200);
-
-    const hypeMap: Partial<Record<PowerupType, { title: string; subtitle: string; tier: number }>> = {
-      overclock: { title: 'OVERCLOCK!', subtitle: '2× score multiplier', tier: 3 },
-      chronos: { title: 'CHRONOS!', subtitle: 'Time slows for you', tier: 3 },
-      magnet: { title: 'MAGNET SYNC!', subtitle: 'Shards drawn to core', tier: 2 },
-      shield: { title: 'SHIELD UP!', subtitle: 'One hit absorbed', tier: 2 },
-    };
-    const hype = hypeMap[type];
-    if (hype) {
-      this.events.emit('ui:hype', { ...hype, color: 'violet' });
-      this.audio.playHype(hype.tier);
-    }
   }
 
   private addScore(delta: number, popupX?: number, popupY?: number): void {
@@ -1245,9 +1204,10 @@ export class GameScene extends BaseScene {
       nearMisses: this.nearMisses,
       mode: this.config.mode,
       creditsEarned: this.runCredits,
-      rankPercentile: estimateRankPercentile(this.score),
       realitiesDiscovered: this.reality.getDiscoveredThisRun(),
     };
+
+    this.save.persistNow();
 
     const syncCompleted = this.gridSync.finalizeRun(stats);
 
@@ -1260,7 +1220,7 @@ export class GameScene extends BaseScene {
     this.director.finalizeRun(stats.score, stats.timeAlive, stats.mode);
     this.ghostReplay.destroy();
 
-    setTimeout(() => {
+    this.scheduleTimeout(() => {
       this.events.emit('game:over', { stats });
       this.achievements.check(stats);
       this.onComplete?.(stats, syncCompleted);

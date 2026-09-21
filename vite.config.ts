@@ -30,11 +30,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon.svg'],
       manifest: {
-        name: 'NEON PULSE',
-        short_name: 'NeonPulse',
-        description: 'High-tech cyberpunk arcade — dodge firewalls, collect data, build combos.',
-        theme_color: '#0a0e1a',
-        background_color: '#0a0e1a',
+        name: 'NEON ARCADE',
+        short_name: 'NeonArcade',
+        description: 'Browser arcade — NEON PULSE, Offline Rex, and Catapult Chaos.',
+        theme_color: '#F5F3EF',
+        background_color: '#F5F3EF',
         display: 'standalone',
         orientation: 'any',
         icons: [
