@@ -69,7 +69,6 @@ export class CatapultChaosGame {
   private groundY = 0;
   private launchAngle = 0.75;
   private powerMeter = 0;
-  private powerDir = 1;
   private powerZone: PowerZone = 'good';
   private airInput = 0;
   private abilityReady = true;
@@ -83,8 +82,8 @@ export class CatapultChaosGame {
   private slowMo = 0;
   private pulse = 0;
 
-  private aimDrag = { active: false, pointerId: -1, startY: 0, startAngle: 0.75, moved: false };
-  private angleReady = false;
+  private launchHold = { active: false, pointerId: -1, startY: 0, startAngle: 0.75 };
+  private spaceHeld = false;
 
   private boundResize = (): void => this.resize();
   private boundKeyDown = (e: KeyboardEvent): void => this.onKeyDown(e);
@@ -127,15 +126,15 @@ export class CatapultChaosGame {
 
     this.resize();
     this.initLevel();
-    this.showIntro();
   }
 
   async boot(): Promise<void> {
     await runGameBoot(this.root, {
       title: 'CATAPULT CHAOS',
       subtitle: 'Charging launch systems…',
-      minMs: 950,
+      minMs: 650,
     });
+    this.beginLaunchSetup();
     this.running = true;
     this.lastTs = performance.now();
     this.raf = requestAnimationFrame((t) => this.loop(t));
@@ -165,8 +164,8 @@ export class CatapultChaosGame {
           <p class="mg-eyebrow">Green Valley</p>
           <h1 class="mg-title">CATAPULT CHAOS</h1>
           <p class="mg-sub">Aim, charge, launch. Chain combos through the valley.</p>
-          <p class="mg-hint">Drag to aim · Tap to charge power · Steer in the air</p>
-          <button type="button" class="mg-cta" data-action="intro">Enter range</button>
+          <p class="mg-hint">Hold & drag to aim · Release to launch · Steer in the air</p>
+          <button type="button" class="mg-cta" data-action="intro">Play</button>
         </div>
         <div class="mg-panel hidden" id="cc-panel-results">
           <p class="mg-eyebrow">Run complete</p>
@@ -180,13 +179,6 @@ export class CatapultChaosGame {
       </div>
       <button type="button" class="cc-ability hidden" id="cc-ability" aria-label="Ability">⚡</button>
     `;
-  }
-
-  private showIntro(): void {
-    this.phase = 'intro';
-    this.root.querySelector('#cc-panel-intro')?.classList.remove('hidden');
-    this.root.querySelector('#cc-panel-results')?.classList.add('hidden');
-    this.root.querySelector('#cc-overlay')?.classList.remove('cc-overlay-hidden');
   }
 
   private beginFromIntro(): void {
@@ -213,6 +205,7 @@ export class CatapultChaosGame {
     this.canvas.style.width = `${w}px`;
     this.canvas.style.height = `${h}px`;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.ctx.imageSmoothingEnabled = true;
     this.groundY = h * 0.72;
   }
 
@@ -228,12 +221,13 @@ export class CatapultChaosGame {
     this.lastPowerZone = 'good';
     this.launchAngle = 0.75;
     this.powerMeter = 0;
-    this.powerDir = 1;
-    this.angleReady = false;
-    this.phase = 'aim';
+    this.launchHold.active = false;
+    this.spaceHeld = false;
+    this.phase = 'launch';
     this.camX = 0;
     this.camY = 0;
-    this.root.querySelector('#cc-overlay')?.classList.add('cc-overlay-hidden');
+    this.root.classList.add('cc-playing');
+    this.root.querySelector('#cc-overlay')?.classList.add('mg-overlay-hidden');
     this.root.querySelector('#cc-ability')?.classList.add('hidden');
     const p = this.physics.player;
     p.x = GREEN_VALLEY_LEVEL.catapult.x + 60;
@@ -246,21 +240,25 @@ export class CatapultChaosGame {
 
   private startRun(): void {
     this.hideAllPanels();
-    this.root.querySelector('#cc-overlay')?.classList.add('cc-overlay-hidden');
+    this.root.querySelector('#cc-overlay')?.classList.add('mg-overlay-hidden');
     this.beginLaunchSetup();
   }
 
-  private beginPowerPhase(): void {
-    this.phase = 'power';
-    this.angleReady = false;
-    this.powerMeter = 0;
-    this.powerDir = 1;
+  private updatePowerZone(): void {
+    if (this.powerMeter < 0.25) this.powerZone = 'weak';
+    else if (this.powerMeter < 0.55) this.powerZone = 'good';
+    else if (this.powerMeter < 0.78) this.powerZone = 'perfect';
+    else this.powerZone = 'overload';
+    if (this.powerZone === 'perfect' && this.lastPowerZone !== 'perfect') {
+      this.sfx.powerTick('perfect');
+    }
+    this.lastPowerZone = this.powerZone;
   }
 
   private launch(): void {
     const charDef = CHARACTERS[this.characterId]!;
-    const safePower = Math.min(this.powerMeter, 0.78);
-    const basePower = 11 + safePower * 14;
+    const safePower = Math.min(Math.max(this.powerMeter, 0.12), 0.78);
+    const basePower = 9 + safePower * 11;
     const zoneBonus = this.powerZone === 'perfect' ? 1.12 : this.powerZone === 'good' ? 1.04 : this.powerZone === 'overload' ? 0.92 : 0.85;
     const vx = Math.cos(-this.launchAngle) * basePower * zoneBonus;
     const vy = Math.sin(-this.launchAngle) * basePower * zoneBonus;
@@ -294,7 +292,8 @@ export class CatapultChaosGame {
 
   private endRun(): void {
     this.phase = 'results';
-    this.root.querySelector('#cc-overlay')?.classList.remove('cc-overlay-hidden');
+    this.root.classList.remove('cc-playing');
+    this.root.querySelector('#cc-overlay')?.classList.remove('mg-overlay-hidden');
     this.root.querySelector('#cc-ability')?.classList.add('hidden');
     const bd = this.score.breakdown();
     const isRecord = bd.total > this.hiScore;
@@ -371,7 +370,7 @@ export class CatapultChaosGame {
   private showPanel(id: string): void {
     this.hideAllPanels();
     this.root.querySelector(`#${id}`)?.classList.remove('hidden');
-    this.root.querySelector('#cc-overlay')?.classList.remove('cc-overlay-hidden');
+    this.root.querySelector('#cc-overlay')?.classList.remove('mg-overlay-hidden');
   }
 
   private hideAllPanels(): void {
@@ -379,7 +378,7 @@ export class CatapultChaosGame {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
-    if (this.phase === 'aim') {
+    if (this.phase === 'launch') {
       if (e.code === 'ArrowUp' || e.code === 'KeyW') {
         e.preventDefault();
         this.launchAngle = Math.min(1.35, this.launchAngle + 0.04);
@@ -390,17 +389,25 @@ export class CatapultChaosGame {
         this.launchAngle = Math.max(0.25, this.launchAngle - 0.04);
         return;
       }
+      if ((e.code === 'Space' || e.code === 'Enter') && !this.spaceHeld) {
+        e.preventDefault();
+        this.spaceHeld = true;
+        this.powerMeter = 0;
+        return;
+      }
     }
     if (e.code === 'ArrowLeft' || e.code === 'KeyA') this.airInput = -1;
     if (e.code === 'ArrowRight' || e.code === 'KeyD') this.airInput = 1;
-    if (e.code === 'Space' || e.code === 'Enter') {
-      e.preventDefault();
-      this.handlePrimaryAction();
-    }
     if (e.code === 'ShiftLeft' || e.code === 'KeyE') this.useAbility();
   }
 
   private onKeyUp(e: KeyboardEvent): void {
+    if (this.phase === 'launch' && (e.code === 'Space' || e.code === 'Enter') && this.spaceHeld) {
+      e.preventDefault();
+      this.spaceHeld = false;
+      this.launch();
+      return;
+    }
     if (e.code === 'ArrowLeft' || e.code === 'KeyA' || e.code === 'ArrowRight' || e.code === 'KeyD') {
       this.airInput = 0;
     }
@@ -409,21 +416,20 @@ export class CatapultChaosGame {
   private onPointerDown(e: PointerEvent): void {
     if ((e.target as HTMLElement).closest('.mg-back, .mg-cta, .cc-ability, .mg-panel')) return;
     this.sfx.ensure();
-    if (this.phase === 'aim') {
+    if (this.phase === 'intro') {
+      this.beginFromIntro();
+      return;
+    }
+    if (this.phase === 'launch') {
       e.preventDefault();
-      this.aimDrag = {
+      this.launchHold = {
         active: true,
         pointerId: e.pointerId,
         startY: e.clientY,
         startAngle: this.launchAngle,
-        moved: false,
       };
-      this.root.setPointerCapture(e.pointerId);
-      return;
-    }
-    if (this.phase === 'power') {
-      e.preventDefault();
-      this.releasePower();
+      this.powerMeter = 0;
+      this.canvas.setPointerCapture(e.pointerId);
       return;
     }
     if (this.phase === 'flying') {
@@ -434,43 +440,25 @@ export class CatapultChaosGame {
   }
 
   private onPointerMove(e: PointerEvent): void {
-    if (this.phase === 'aim' && this.aimDrag.active && e.pointerId === this.aimDrag.pointerId) {
+    if (this.phase === 'launch' && this.launchHold.active && e.pointerId === this.launchHold.pointerId) {
       e.preventDefault();
-      const dy = this.aimDrag.startY - e.clientY;
-      if (Math.abs(dy) > 6) this.aimDrag.moved = true;
-      this.launchAngle = Math.max(0.25, Math.min(1.35, this.aimDrag.startAngle + dy * 0.012));
+      const dy = this.launchHold.startY - e.clientY;
+      this.launchAngle = Math.max(0.25, Math.min(1.35, this.launchHold.startAngle + dy * 0.012));
     }
   }
 
   private onPointerUp(e: PointerEvent): void {
-    if (this.phase === 'aim' && this.aimDrag.active && e.pointerId === this.aimDrag.pointerId) {
-      // Short tap = charge power; drag release = keep angle, tap again to charge
-      if (!this.aimDrag.moved) {
-        this.beginPowerPhase();
-      } else {
-        this.angleReady = true;
-      }
-      this.aimDrag.active = false;
+    if (this.phase === 'launch' && this.launchHold.active && e.pointerId === this.launchHold.pointerId) {
+      this.launchHold.active = false;
       try {
-        this.root.releasePointerCapture(e.pointerId);
+        this.canvas.releasePointerCapture(e.pointerId);
       } catch {
         // already released
       }
+      this.launch();
       return;
     }
     if (this.phase === 'flying') this.airInput = 0;
-  }
-
-  private handlePrimaryAction(): void {
-    if (this.phase === 'intro') this.beginFromIntro();
-    else if (this.phase === 'aim') this.beginPowerPhase();
-    else if (this.phase === 'power') this.releasePower();
-    else if (this.phase === 'results') this.startRun();
-  }
-
-  private releasePower(): void {
-    if (this.phase !== 'power') return;
-    this.launch();
   }
 
   private useAbility(): void {
@@ -513,28 +501,18 @@ export class CatapultChaosGame {
     this.pulse += dt * 0.05;
     if (this.slowMo > 0) this.slowMo = Math.max(0, this.slowMo - dt * 0.02);
 
-    if (this.phase === 'power') {
-      this.powerMeter += this.powerDir * dt * 0.035;
-      if (this.powerMeter >= 1) { this.powerMeter = 1; this.powerDir = -1; }
-      if (this.powerMeter <= 0) { this.powerMeter = 0; this.powerDir = 1; }
-      if (this.powerMeter < 0.25) this.powerZone = 'weak';
-      else if (this.powerMeter < 0.55) this.powerZone = 'good';
-      else if (this.powerMeter < 0.78) this.powerZone = 'perfect';
-      else this.powerZone = 'overload';
-      if (this.powerZone === 'perfect' && this.lastPowerZone !== 'perfect') {
-        this.sfx.powerTick('perfect');
+    if (this.phase === 'launch') {
+      if (this.launchHold.active || this.spaceHeld) {
+        this.powerMeter = Math.min(1, this.powerMeter + dt * 0.045);
       }
-      this.lastPowerZone = this.powerZone;
+      this.updatePowerZone();
+      this.camX += (0 - this.camX) * 0.12 * dt;
+      this.camY += (0 - this.camY) * 0.12 * dt;
     }
 
     const shake = this.feel.tick(dt);
     this.shakeX = shake.shakeX;
     this.shakeY = shake.shakeY;
-
-    if (this.phase === 'aim' || this.phase === 'power') {
-      this.camX += (0 - this.camX) * 0.12 * dt;
-      this.camY += (0 - this.camY) * 0.12 * dt;
-    }
 
     if (this.phase === 'flying' || this.phase === 'settling') {
       const charDef = CHARACTERS[this.characterId]!;
@@ -588,7 +566,6 @@ export class CatapultChaosGame {
             this.sfx.combo(r.combo);
             this.feel.showCombo(r.combo);
           }
-          if (r.combo >= 5) this.slowMo = 0.35;
         }
         if (ev.kind === 'kill') {
           this.sfx.crash();
@@ -632,7 +609,7 @@ export class CatapultChaosGame {
       if (comboEl) comboEl.textContent = `×${this.comboAnim.rounded()}`;
     }
 
-    if (this.phase === 'aim' || this.phase === 'power') {
+    if (this.phase === 'launch') {
       this.root.querySelector('#cc-hud')?.classList.add('cc-hud-launch');
     } else {
       this.root.querySelector('#cc-hud')?.classList.remove('cc-hud-launch');
@@ -663,15 +640,16 @@ export class CatapultChaosGame {
       drawWorldObject(ctx, o, this.camX, this.camY, this.physics.time);
     }
 
-    if (this.phase === 'aim' || this.phase === 'power') {
-      const power = 11 + (this.phase === 'power' ? this.powerMeter : 0.65) * 14;
-      const armPull = this.phase === 'power' ? 0.15 + this.powerMeter * 0.35 : 0;
+    if (this.phase === 'launch') {
+      const charging = this.launchHold.active || this.spaceHeld;
+      const previewPower = charging ? this.powerMeter : 0.55;
+      const armPull = charging ? 0.15 + this.powerMeter * 0.35 : 0;
       drawTrajectoryPreview(
         ctx,
         catapultX + 60,
         this.groundY - 50,
         -this.launchAngle,
-        power,
+        9 + previewPower * 11,
         level.wind,
         this.camX,
         this.camY,
@@ -685,8 +663,8 @@ export class CatapultChaosGame {
       drawPlayer(ctx, bucketPlayer, this.camX, this.camY, 'stable', false);
 
       drawLaunchHud(
-        ctx, w, h, this.phase, this.launchAngle, this.powerMeter, this.powerZone,
-        level.world, level.weather, this.pulse, this.angleReady,
+        ctx, w, h, this.launchAngle, this.powerMeter, this.powerZone,
+        level.world, level.weather, this.pulse, charging,
       );
     } else {
       drawCatapult(ctx, catapultX - this.camX, catapultY - this.camY, 0.5, 0);
