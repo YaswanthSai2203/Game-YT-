@@ -1,4 +1,5 @@
 import { applyDesignTokensToRoot } from '@/config/designTokens';
+import { applyPortalTokensToRoot } from '@/config/portalTokens';
 import { bustStalePwaCache, PortalApp } from '@/portal/PortalApp';
 import '@/ui/styles/neonTactical.css';
 import '@/ui/styles/phaseTwo.css';
@@ -13,6 +14,7 @@ import '@fontsource/rajdhani/700.css';
 
 async function main(): Promise<void> {
   applyDesignTokensToRoot();
+  applyPortalTokensToRoot();
   document.body.classList.add('ui-neon-tactical');
   await bustStalePwaCache();
 
@@ -28,11 +30,9 @@ async function main(): Promise<void> {
   } catch (error) {
     console.error('Failed to initialize NEON ARCADE:', error);
     container.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#00f0ff;font-family:Orbitron,sans-serif;text-align:center;padding:24px;">
-        <div>
-          <h1 style="margin-bottom:12px;">NEON ARCADE</h1>
-          <p style="color:#8892a8;">Failed to load. Please refresh the page.</p>
-        </div>
+      <div class="arcade-launch-error">
+        <h1>NEON ARCADE</h1>
+        <p>Failed to load. Refresh the page.</p>
       </div>
     `;
   }

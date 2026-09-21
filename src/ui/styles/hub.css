@@ -1,6 +1,15 @@
 /**
- * NEON ARCADE — premium multi-game hub
+ * NEON ARCADE — portal hub (marketing surface)
+ * Warm neutral canvas, product-first layout, restrained accent.
  */
+
+body.portal-active {
+  background: var(--portal-canvas, #F5F3EF);
+}
+
+body.portal-active #game-container {
+  background: var(--portal-canvas, #F5F3EF);
+}
 
 body.ui-neon-tactical .arcade-hub {
   position: absolute;
@@ -9,476 +18,335 @@ body.ui-neon-tactical .arcade-hub {
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  background: #04060d;
+  background: var(--portal-canvas);
+  color: var(--portal-ink);
+  font-family: var(--portal-font-body);
 }
 
-/* ─── Layered atmosphere ─── */
-body.ui-neon-tactical .arcade-hub-bg {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
+body.ui-neon-tactical .arcade-hub-shell {
+  max-width: var(--portal-max-width);
+  margin: 0 auto;
+  padding:
+    max(28px, env(safe-area-inset-top))
+    max(20px, env(safe-area-inset-left))
+    max(40px, env(safe-area-inset-bottom))
+    max(20px, env(safe-area-inset-right));
+}
+
+/* ─── Site header ─── */
+body.ui-neon-tactical .arcade-site-header {
+  max-width: var(--portal-narrow-width);
+  margin-bottom: var(--portal-space-xl);
+}
+
+body.ui-neon-tactical .arcade-brand-eyebrow {
+  margin: 0 0 var(--portal-space-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--portal-inkMuted);
+}
+
+body.ui-neon-tactical .arcade-brand-title {
+  margin: 0;
+  font-family: var(--portal-font-display);
+  font-size: clamp(2rem, 7vw, 3rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--portal-ink);
+}
+
+body.ui-neon-tactical .arcade-brand-lead {
+  margin: var(--portal-space-md) 0 0;
+  max-width: 34em;
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  color: var(--portal-inkSecondary);
+}
+
+/* ─── Section labels ─── */
+body.ui-neon-tactical .arcade-section-label {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--portal-inkMuted);
+}
+
+body.ui-neon-tactical .arcade-spotlight-head,
+body.ui-neon-tactical .arcade-catalog-head {
+  margin-bottom: var(--portal-space-md);
+}
+
+/* ─── Continue ─── */
+body.ui-neon-tactical .arcade-resume-wrap {
+  margin-bottom: var(--portal-space-lg);
+}
+
+body.ui-neon-tactical .arcade-resume {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--portal-space-sm) 0;
+  border: 0;
+  border-bottom: 1px solid var(--portal-border);
+  background: transparent;
+  color: var(--portal-ink);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--portal-duration-fast) ease;
+}
+
+body.ui-neon-tactical .arcade-resume:focus-visible {
+  outline: 2px solid var(--portal-focus);
+  outline-offset: 4px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  body.ui-neon-tactical .arcade-resume:hover {
+    border-color: var(--portal-accent);
+  }
+}
+
+body.ui-neon-tactical .arcade-resume-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--portal-accent);
+}
+
+body.ui-neon-tactical .arcade-resume-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--portal-ink);
+}
+
+/* ─── Spotlight (featured product) ─── */
+body.ui-neon-tactical .arcade-spotlight {
+  margin-bottom: var(--portal-space-xxl);
+}
+
+body.ui-neon-tactical .arcade-spotlight-card {
+  display: grid;
+  grid-template-columns: 1fr;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--portal-border);
+  border-radius: var(--portal-radius-md);
+  background: var(--portal-surface);
+  color: var(--portal-ink);
+  text-align: left;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color var(--portal-duration-fast) ease;
+}
+
+@media (min-width: 720px) {
+  body.ui-neon-tactical .arcade-spotlight-card {
+    grid-template-columns: 1.15fr 1fr;
+    min-height: 320px;
+  }
+}
+
+body.ui-neon-tactical .arcade-spotlight-card:focus-visible {
+  outline: 2px solid var(--portal-focus);
+  outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  body.ui-neon-tactical .arcade-spotlight-card:hover {
+    border-color: var(--portal-borderStrong);
+  }
+}
+
+body.ui-neon-tactical .arcade-spotlight-visual {
+  position: relative;
+  min-height: 220px;
+  background: var(--portal-canvasMuted);
   overflow: hidden;
 }
 
-body.ui-neon-tactical .arcade-hub .sync-grid-bg {
-  opacity: 0.42;
+@media (min-width: 720px) {
+  body.ui-neon-tactical .arcade-spotlight-visual {
+    min-height: 100%;
+  }
 }
 
-body.ui-neon-tactical .arcade-hub-aurora {
-  position: absolute;
-  inset: 0;
-}
-
-body.ui-neon-tactical .arcade-aurora-blob {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(72px);
-  opacity: 0.45;
-  animation: arcade-aurora-drift 18s ease-in-out infinite;
-}
-
-body.ui-neon-tactical .arcade-aurora-cyan {
-  width: 55vw;
-  height: 55vw;
-  max-width: 420px;
-  max-height: 420px;
-  top: -12%;
-  left: -8%;
-  background: radial-gradient(circle, rgba(0, 240, 255, 0.55) 0%, transparent 70%);
-}
-
-body.ui-neon-tactical .arcade-aurora-violet {
-  width: 50vw;
-  height: 50vw;
-  max-width: 380px;
-  max-height: 380px;
-  top: 28%;
-  right: -18%;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.5) 0%, transparent 70%);
-  animation-delay: -6s;
-}
-
-body.ui-neon-tactical .arcade-aurora-magenta {
-  width: 45vw;
-  height: 45vw;
-  max-width: 340px;
-  max-height: 340px;
-  bottom: 8%;
-  left: 20%;
-  background: radial-gradient(circle, rgba(255, 0, 110, 0.35) 0%, transparent 70%);
-  animation-delay: -12s;
-}
-
-@keyframes arcade-aurora-drift {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(4%, 3%) scale(1.06); }
-  66% { transform: translate(-3%, 2%) scale(0.96); }
-}
-
-body.ui-neon-tactical .arcade-hub-scanlines {
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.05) 2px,
-    rgba(0, 0, 0, 0.05) 4px
-  );
-  opacity: 0.55;
-}
-
-body.reduced-motion.ui-neon-tactical .arcade-aurora-blob {
-  animation: none;
-}
-
-/* ─── Shell layout ─── */
-body.ui-neon-tactical .arcade-hub-shell {
-  position: relative;
-  z-index: 1;
-  max-width: 520px;
-  margin: 0 auto;
-  padding: max(20px, env(safe-area-inset-top)) 18px max(28px, env(safe-area-inset-bottom));
-}
-
-/* ─── Hero / logo lockup ─── */
-body.ui-neon-tactical .arcade-hub-hero {
-  text-align: center;
-  padding: 8px 0 24px;
-}
-
-body.ui-neon-tactical .arcade-logo-wrap {
-  position: relative;
-  display: inline-block;
-  margin-bottom: 10px;
-}
-
-body.ui-neon-tactical .arcade-version-pill {
-  display: inline-block;
-  margin-bottom: 10px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.58rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-neonCyan);
-  border: 1px solid rgba(0, 240, 255, 0.35);
-  background: rgba(0, 240, 255, 0.08);
-}
-
-body.ui-neon-tactical .arcade-logo {
+body.ui-neon-tactical .arcade-spotlight-copy {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0;
-  margin: 0;
-  line-height: 0.92;
-  font-family: 'Orbitron', sans-serif;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-}
-
-body.ui-neon-tactical .arcade-logo-neon {
-  font-size: clamp(2.4rem, 11vw, 3.4rem);
-  background: linear-gradient(180deg, #ffffff 0%, #00f0ff 45%, #00a8b8 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 0 28px rgba(0, 240, 255, 0.45));
-}
-
-body.ui-neon-tactical .arcade-logo-arcade {
-  font-size: clamp(1.35rem, 6.5vw, 1.85rem);
-  color: var(--color-textPrimary);
-  letter-spacing: 0.38em;
-  text-indent: 0.38em;
-  opacity: 0.92;
-  text-shadow: 0 0 20px rgba(139, 92, 246, 0.35);
-}
-
-body.ui-neon-tactical .arcade-hero-tagline {
-  font-size: 0.92rem;
-  color: var(--color-textSecondary);
-  margin: 0 0 16px;
-  letter-spacing: 0.06em;
-  line-height: 1.45;
-  max-width: 320px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-body.ui-neon-tactical .arcade-hub-stats {
-  display: flex;
-  flex-wrap: wrap;
   justify-content: center;
-  gap: 8px;
+  gap: var(--portal-space-sm);
+  padding: var(--portal-space-lg);
 }
 
-body.ui-neon-tactical .arcade-stat-pill {
+body.ui-neon-tactical .arcade-btn-primary {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 0.68rem;
+  align-self: flex-start;
+  margin-top: var(--portal-space-sm);
+  padding: 11px 18px;
+  border-radius: var(--portal-radius-sm);
+  background: var(--portal-accent);
+  color: #fff;
+  font-size: 0.9375rem;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  color: var(--color-textSecondary);
-  background: rgba(18, 24, 41, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  line-height: 1;
 }
 
-body.ui-neon-tactical .arcade-stat-pill .ms-icon {
-  font-size: 1.05em;
-  color: var(--color-neonCyan);
-  text-transform: none;
+@media (hover: hover) and (pointer: fine) {
+  body.ui-neon-tactical .arcade-spotlight-card:hover .arcade-btn-primary {
+    background: var(--portal-accentHover);
+  }
 }
 
-body.ui-neon-tactical .arcade-stat-live {
-  color: #7dffb8;
-  border-color: rgba(0, 255, 136, 0.25);
+/* ─── Catalog list ─── */
+body.ui-neon-tactical .arcade-catalog {
+  margin-bottom: var(--portal-space-xxl);
 }
 
-body.ui-neon-tactical .arcade-stat-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #00ff88;
-  box-shadow: 0 0 10px rgba(0, 255, 136, 0.7);
-  animation: arcade-live-pulse 2s ease-in-out infinite;
+body.ui-neon-tactical .arcade-catalog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--portal-border);
 }
 
-@keyframes arcade-live-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.55; transform: scale(0.85); }
-}
-
-body.reduced-motion.ui-neon-tactical .arcade-stat-dot {
-  animation: none;
-}
-
-/* ─── Continue playing ─── */
-body.ui-neon-tactical .arcade-continue-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+body.ui-neon-tactical .arcade-catalog-item {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: var(--portal-space-md);
   width: 100%;
-  margin-bottom: 20px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  border: 1px solid rgba(0, 240, 255, 0.4);
-  background: linear-gradient(105deg, rgba(0, 240, 255, 0.12) 0%, rgba(18, 24, 41, 0.92) 55%);
-  color: var(--color-textPrimary);
+  padding: var(--portal-space-md) 0;
+  border: 0;
+  border-bottom: 1px solid var(--portal-border);
+  background: transparent;
+  color: var(--portal-ink);
   text-align: left;
-  box-shadow: 0 0 24px rgba(0, 240, 255, 0.12);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  cursor: pointer;
+  transition: background var(--portal-duration-fast) ease;
 }
 
-body.ui-neon-tactical .arcade-continue-card:active {
-  transform: scale(0.98);
+@media (min-width: 560px) {
+  body.ui-neon-tactical .arcade-catalog-item {
+    grid-template-columns: 160px 1fr;
+    gap: var(--portal-space-lg);
+    padding: var(--portal-space-lg) 0;
+  }
 }
 
-body.ui-neon-tactical .arcade-continue-icon {
+body.ui-neon-tactical .arcade-catalog-item:focus-visible {
+  outline: 2px solid var(--portal-focus);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  body.ui-neon-tactical .arcade-catalog-item:not(.arcade-catalog-item-soon):hover {
+    background: rgba(0, 0, 0, 0.02);
+  }
+}
+
+body.ui-neon-tactical .arcade-catalog-item-soon {
+  cursor: default;
+  opacity: 0.72;
+}
+
+body.ui-neon-tactical .arcade-row-visual {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--portal-radius-sm);
+  overflow: hidden;
+  background: var(--portal-canvasMuted);
+}
+
+body.ui-neon-tactical .arcade-row-copy {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(0, 240, 255, 0.2);
-  border: 1px solid rgba(0, 240, 255, 0.5);
-  color: var(--color-neonCyan);
-  flex-shrink: 0;
-}
-
-body.ui-neon-tactical .arcade-continue-icon .ms-icon {
-  font-size: 1.4rem;
-  text-transform: none;
-}
-
-body.ui-neon-tactical .arcade-continue-copy {
-  flex: 1;
+  gap: 4px;
   min-width: 0;
 }
 
-body.ui-neon-tactical .arcade-continue-label {
-  display: block;
-  font-size: 0.6rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--color-textSecondary);
+body.ui-neon-tactical .arcade-game-genre {
+  font-size: 0.6875rem;
   font-weight: 600;
-}
-
-body.ui-neon-tactical .arcade-continue-title {
-  display: block;
-  font-family: 'Orbitron', sans-serif;
-  font-size: 0.95rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  color: var(--color-neonCyan);
-}
-
-body.ui-neon-tactical .arcade-continue-arrow {
-  font-size: 1.2rem;
-  color: var(--color-neonCyan);
-  opacity: 0.8;
-}
-
-body.ui-neon-tactical .arcade-accent-magenta.arcade-continue-card {
-  border-color: rgba(255, 0, 110, 0.4);
-  background: linear-gradient(105deg, rgba(255, 0, 110, 0.12) 0%, rgba(18, 24, 41, 0.92) 55%);
-  box-shadow: 0 0 24px rgba(255, 0, 110, 0.1);
-}
-
-body.ui-neon-tactical .arcade-accent-magenta .arcade-continue-icon,
-body.ui-neon-tactical .arcade-accent-magenta .arcade-continue-title,
-body.ui-neon-tactical .arcade-accent-magenta .arcade-continue-arrow {
-  color: var(--color-neonMagenta);
-  border-color: rgba(255, 0, 110, 0.45);
-}
-
-/* ─── Sections ─── */
-body.ui-neon-tactical .arcade-section {
-  margin-bottom: 22px;
-}
-
-body.ui-neon-tactical .arcade-section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-body.ui-neon-tactical .arcade-section-title {
-  margin: 0;
-  font-family: 'Orbitron', sans-serif;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--color-textSecondary);
+  color: var(--portal-inkMuted);
 }
 
-body.ui-neon-tactical .arcade-section-badge {
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.58rem;
+body.ui-neon-tactical .arcade-game-title {
+  font-size: 1.0625rem;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--color-neonGold);
-  border: 1px solid rgba(255, 215, 0, 0.35);
-  background: rgba(255, 215, 0, 0.08);
+  letter-spacing: -0.01em;
+  color: var(--portal-ink);
 }
 
-/* ─── Game grid ─── */
-body.ui-neon-tactical .arcade-game-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 14px;
+body.ui-neon-tactical .arcade-game-desc {
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  color: var(--portal-inkSecondary);
 }
 
-@media (min-width: 400px) {
-  body.ui-neon-tactical .arcade-section:not(.arcade-section-featured) .arcade-game-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
+body.ui-neon-tactical .arcade-btn-text {
+  align-self: flex-start;
+  margin-top: var(--portal-space-sm);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--portal-accent);
 }
 
-/* ─── Game cards ─── */
-body.ui-neon-tactical .arcade-game-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  text-align: left;
-  padding: 0;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(14, 18, 32, 0.88);
-  color: var(--color-textPrimary);
-  overflow: hidden;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+body.ui-neon-tactical .arcade-row-status {
+  align-self: flex-start;
+  margin-top: var(--portal-space-sm);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--portal-inkMuted);
 }
 
-body.ui-neon-tactical .arcade-game-card:not(:disabled):active {
-  transform: scale(0.97);
-}
+/* ─── Accent tokens (cover art only) ─── */
+body.ui-neon-tactical .arcade-accent-cyan { --arcade-accent-rgb: 0, 102, 128; }
+body.ui-neon-tactical .arcade-accent-magenta { --arcade-accent-rgb: 140, 45, 75; }
+body.ui-neon-tactical .arcade-accent-violet { --arcade-accent-rgb: 88, 62, 120; }
+body.ui-neon-tactical .arcade-accent-gold { --arcade-accent-rgb: 130, 95, 20; }
 
-@media (hover: hover) {
-  body.ui-neon-tactical .arcade-game-card:not(:disabled):hover {
-    transform: translateY(-3px);
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
-  }
-}
-
-body.ui-neon-tactical .arcade-game-featured {
-  border-color: rgba(0, 240, 255, 0.45);
-  box-shadow: 0 0 32px rgba(0, 240, 255, 0.14), 0 12px 32px rgba(0, 0, 0, 0.4);
-}
-
-body.ui-neon-tactical .arcade-game-featured .arcade-card-cover {
-  height: 148px;
-}
-
-body.ui-neon-tactical .arcade-game-soon {
-  opacity: 0.72;
-  cursor: not-allowed;
-}
-
-body.ui-neon-tactical .arcade-accent-cyan { --arcade-accent: var(--color-neonCyan); --arcade-accent-rgb: 0, 240, 255; }
-body.ui-neon-tactical .arcade-accent-magenta { --arcade-accent: var(--color-neonMagenta); --arcade-accent-rgb: 255, 0, 110; }
-body.ui-neon-tactical .arcade-accent-violet { --arcade-accent: var(--color-neonViolet); --arcade-accent-rgb: 139, 92, 246; }
-body.ui-neon-tactical .arcade-accent-gold { --arcade-accent: var(--color-neonGold); --arcade-accent-rgb: 255, 215, 0; }
-
-/* ─── Cover art panel ─── */
-body.ui-neon-tactical .arcade-card-cover {
-  position: relative;
-  height: 108px;
-  overflow: hidden;
-  background: linear-gradient(160deg, rgba(var(--arcade-accent-rgb), 0.18) 0%, rgba(10, 14, 26, 0.95) 100%);
-}
-
+/* ─── Cover art (game previews) ─── */
 body.ui-neon-tactical .arcade-cover-art {
   position: absolute;
   inset: 0;
 }
 
-body.ui-neon-tactical .arcade-cover-glow {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse 80% 70% at 50% 100%, rgba(var(--arcade-accent-rgb), 0.35) 0%, transparent 70%);
-}
-
-body.ui-neon-tactical .arcade-cover-icon {
-  position: absolute;
-  right: 14px;
-  bottom: 12px;
-  color: var(--arcade-accent);
-  opacity: 0.85;
-  filter: drop-shadow(0 0 12px rgba(var(--arcade-accent-rgb), 0.5));
-  z-index: 2;
-}
-
-body.ui-neon-tactical .arcade-cover-icon .ms-icon {
-  font-size: 2rem;
-  text-transform: none;
-}
-
-body.ui-neon-tactical .arcade-cover-lock {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(4, 6, 13, 0.55);
-  color: var(--color-textSecondary);
-  z-index: 3;
-}
-
-body.ui-neon-tactical .arcade-cover-lock .ms-icon {
-  font-size: 1.5rem;
-  text-transform: none;
-}
-
-/* Per-game cover scenes (CSS art) */
 body.ui-neon-tactical .arcade-cover-neon-pulse .arcade-cover-art {
   background:
-    linear-gradient(90deg, transparent 48%, rgba(0, 240, 255, 0.15) 49%, rgba(0, 240, 255, 0.15) 51%, transparent 52%),
-    repeating-linear-gradient(0deg, transparent, transparent 18px, rgba(0, 240, 255, 0.06) 18px, rgba(0, 240, 255, 0.06) 19px);
-  animation: arcade-cover-lanes 3s linear infinite;
-}
-
-@keyframes arcade-cover-lanes {
-  from { background-position: 0 0, 0 0; }
-  to { background-position: 0 0, 0 38px; }
+    linear-gradient(180deg, #061018 0%, #0a1824 100%),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 18px,
+      rgba(0, 240, 255, 0.08) 18px,
+      rgba(0, 240, 255, 0.08) 19px
+    );
 }
 
 body.ui-neon-tactical .arcade-cover-neon-pulse .arcade-cover-art::after {
   content: '';
   position: absolute;
   left: 50%;
-  bottom: 22%;
-  width: 12px;
-  height: 12px;
-  margin-left: -6px;
+  bottom: 28%;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
   background: #00f0ff;
-  border-radius: 2px;
-  box-shadow: 0 0 20px #00f0ff, 0 0 40px rgba(0, 240, 255, 0.5);
-  animation: arcade-cover-pulse-dot 1.2s ease-in-out infinite;
-}
-
-@keyframes arcade-cover-pulse-dot {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.15); opacity: 0.75; }
+  border-radius: 1px;
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.6);
 }
 
 body.ui-neon-tactical .arcade-cover-offline-rex .arcade-cover-art {
-  background: linear-gradient(180deg, #060912 0%, #0f1628 100%);
+  background: linear-gradient(180deg, #120a10 0%, #1a1420 100%);
 }
 
 body.ui-neon-tactical .arcade-cover-offline-rex .arcade-cover-art::before {
@@ -486,35 +354,33 @@ body.ui-neon-tactical .arcade-cover-offline-rex .arcade-cover-art::before {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 28%;
+  bottom: 32%;
   height: 2px;
-  background: #00f0ff;
-  box-shadow: 0 0 12px rgba(0, 240, 255, 0.6);
+  background: #ff006e;
 }
 
 body.ui-neon-tactical .arcade-cover-offline-rex .arcade-cover-art::after {
   content: '';
   position: absolute;
-  left: 18%;
-  bottom: 28%;
-  width: 36px;
-  height: 28px;
-  background: linear-gradient(135deg, #00f0ff 0%, #00a8b8 100%);
+  left: 22%;
+  bottom: 32%;
+  width: 28px;
+  height: 22px;
+  background: #ff006e;
   clip-path: polygon(0 100%, 20% 40%, 55% 15%, 75% 10%, 85% 25%, 70% 45%, 100% 100%);
-  filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.6));
 }
 
 body.ui-neon-tactical .arcade-cover-catapult-chaos .arcade-cover-art {
-  background: linear-gradient(180deg, #1a3328 0%, #0f1628 100%);
+  background: linear-gradient(180deg, #1a2418 0%, #121810 100%);
 }
 
 body.ui-neon-tactical .arcade-cover-catapult-chaos .arcade-cover-art::before {
   content: '';
   position: absolute;
-  left: 12%;
-  bottom: 22%;
-  width: 48px;
-  height: 32px;
+  left: 14%;
+  bottom: 24%;
+  width: 40px;
+  height: 26px;
   background: linear-gradient(135deg, #8d6e4a, #5d4030);
   clip-path: polygon(0 100%, 50% 0, 100% 100%);
 }
@@ -522,202 +388,175 @@ body.ui-neon-tactical .arcade-cover-catapult-chaos .arcade-cover-art::before {
 body.ui-neon-tactical .arcade-cover-catapult-chaos .arcade-cover-art::after {
   content: '';
   position: absolute;
-  left: 28%;
-  bottom: 38%;
-  width: 14px;
-  height: 14px;
+  left: 30%;
+  bottom: 40%;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  background: radial-gradient(circle, #fff 0%, #ffd54f 50%, #f9a825 100%);
-  box-shadow: 0 0 16px rgba(255, 213, 79, 0.7);
-  animation: arcade-cover-pulse-dot 1.4s ease-in-out infinite;
+  background: #ffd54f;
 }
 
 body.ui-neon-tactical .arcade-cover-void-drift .arcade-cover-art {
-  background: radial-gradient(ellipse at 30% 20%, rgba(139, 92, 246, 0.25) 0%, transparent 50%),
-    #060912;
+  background: linear-gradient(180deg, #0e0a18 0%, #161022 100%);
 }
 
 body.ui-neon-tactical .arcade-cover-void-drift .arcade-cover-art::before {
   content: '';
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(1px 1px at 20% 30%, rgba(255, 255, 255, 0.5), transparent),
-    radial-gradient(1px 1px at 60% 20%, rgba(0, 240, 255, 0.4), transparent),
-    radial-gradient(1.5px 1.5px at 80% 55%, rgba(255, 255, 255, 0.35), transparent),
-    radial-gradient(1px 1px at 35% 70%, rgba(139, 92, 246, 0.5), transparent);
-}
-
-body.reduced-motion.ui-neon-tactical .arcade-cover-neon-pulse .arcade-cover-art,
-body.reduced-motion.ui-neon-tactical .arcade-cover-neon-pulse .arcade-cover-art::after {
-  animation: none;
-}
-
-/* ─── Card body ─── */
-body.ui-neon-tactical .arcade-card-body {
-  padding: 14px 14px 16px;
-}
-
-body.ui-neon-tactical .arcade-card-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-body.ui-neon-tactical .arcade-game-genre {
-  font-size: 0.58rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-textSecondary);
-}
-
-body.ui-neon-tactical .arcade-game-live {
-  font-size: 0.55rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #00ff88;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: rgba(0, 255, 136, 0.1);
-  border: 1px solid rgba(0, 255, 136, 0.3);
-}
-
-body.ui-neon-tactical .arcade-game-soon-badge {
-  font-size: 0.55rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--color-textSecondary);
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-body.ui-neon-tactical .arcade-game-title {
-  display: block;
-  font-family: 'Orbitron', sans-serif;
-  font-size: 0.92rem;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  color: var(--color-textPrimary);
-}
-
-body.ui-neon-tactical .arcade-game-featured .arcade-game-title {
-  font-size: 1.1rem;
-  color: var(--arcade-accent);
-}
-
-body.ui-neon-tactical .arcade-game-tagline {
-  display: block;
-  font-size: 0.62rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--arcade-accent);
-  margin-top: 2px;
-  opacity: 0.9;
-}
-
-body.ui-neon-tactical .arcade-game-desc {
-  display: block;
-  font-size: 0.76rem;
-  color: var(--color-textSecondary);
-  margin-top: 6px;
-  line-height: 1.4;
-}
-
-body.ui-neon-tactical .arcade-game-featured .arcade-game-desc {
-  font-size: 0.82rem;
-}
-
-body.ui-neon-tactical .arcade-game-cta {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  padding: 7px 14px;
-  border-radius: 999px;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  background: rgba(var(--arcade-accent-rgb), 0.15);
-  border: 1px solid rgba(var(--arcade-accent-rgb), 0.45);
-  color: var(--arcade-accent);
-}
-
-body.ui-neon-tactical .arcade-game-cta-label {
-  text-transform: uppercase;
-}
-
-body.ui-neon-tactical .arcade-game-cta .ms-icon {
-  font-size: 1.1em;
-  text-transform: none;
-}
-
-body.ui-neon-tactical .arcade-game-featured .arcade-game-cta {
-  padding: 9px 18px;
-  font-size: 0.68rem;
-  background: linear-gradient(90deg, rgba(var(--arcade-accent-rgb), 0.25), rgba(var(--arcade-accent-rgb), 0.12));
-  box-shadow: 0 0 20px rgba(var(--arcade-accent-rgb), 0.2);
-}
-
-body.ui-neon-tactical .arcade-game-cta-soon {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.1);
-  color: var(--color-textSecondary);
-}
-
-/* ─── Ticker marquee ─── */
-body.ui-neon-tactical .arcade-ticker {
-  margin: 8px -18px 0;
-  padding: 10px 0;
-  overflow: hidden;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(10, 14, 26, 0.5);
-}
-
-body.ui-neon-tactical .arcade-ticker-track {
-  display: flex;
-  gap: 32px;
-  width: max-content;
-  animation: arcade-ticker-scroll 28s linear infinite;
-}
-
-@keyframes arcade-ticker-scroll {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
-}
-
-body.reduced-motion.ui-neon-tactical .arcade-ticker-track {
-  animation: none;
-}
-
-body.ui-neon-tactical .arcade-ticker-item {
-  font-size: 0.65rem;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--color-textSecondary);
-  white-space: nowrap;
-}
-
-body.ui-neon-tactical .arcade-ticker-soon {
-  color: var(--color-neonViolet);
-  opacity: 0.8;
+  background-image:
+    radial-gradient(1px 1px at 24% 34%, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(1px 1px at 68% 28%, rgba(139, 92, 246, 0.35), transparent);
 }
 
 /* ─── Footer ─── */
-body.ui-neon-tactical .arcade-hub-foot {
-  text-align: center;
-  font-size: 0.72rem;
-  color: var(--color-textSecondary);
-  margin-top: 20px;
-  letter-spacing: 0.05em;
+body.ui-neon-tactical .arcade-site-footer {
+  max-width: var(--portal-narrow-width);
+  padding-top: var(--portal-space-lg);
+  border-top: 1px solid var(--portal-border);
+}
+
+body.ui-neon-tactical .arcade-site-note {
+  margin: 0 0 var(--portal-space-md);
+  font-size: 0.9375rem;
   line-height: 1.5;
-  opacity: 0.85;
+  color: var(--portal-inkSecondary);
+}
+
+body.ui-neon-tactical .arcade-legal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--portal-space-md);
+  margin-bottom: var(--portal-space-md);
+}
+
+body.ui-neon-tactical .arcade-legal-nav a {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--portal-accent);
+  text-decoration: none;
+}
+
+body.ui-neon-tactical .arcade-legal-nav a:focus-visible {
+  outline: 2px solid var(--portal-focus);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  body.ui-neon-tactical .arcade-legal-nav a:hover {
+    text-decoration: underline;
+  }
+}
+
+body.ui-neon-tactical .arcade-site-version {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--portal-inkMuted);
+}
+
+/* ─── Legal pages ─── */
+body.ui-neon-tactical .portal-legal {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--portal-canvas);
+  color: var(--portal-ink);
+  font-family: var(--portal-font-body);
+}
+
+body.ui-neon-tactical .portal-legal-shell {
+  max-width: var(--portal-narrow-width);
+  margin: 0 auto;
+  padding:
+    max(28px, env(safe-area-inset-top))
+    max(20px, env(safe-area-inset-left))
+    max(40px, env(safe-area-inset-bottom))
+    max(20px, env(safe-area-inset-right));
+}
+
+body.ui-neon-tactical .portal-legal-back {
+  display: inline-block;
+  margin-bottom: var(--portal-space-lg);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--portal-accent);
+  text-decoration: none;
+}
+
+body.ui-neon-tactical .portal-legal-back:focus-visible {
+  outline: 2px solid var(--portal-focus);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  body.ui-neon-tactical .portal-legal-back:hover {
+    text-decoration: underline;
+  }
+}
+
+body.ui-neon-tactical .portal-legal-title {
+  margin: 0;
+  font-size: clamp(1.75rem, 5vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+body.ui-neon-tactical .portal-legal-meta {
+  margin: var(--portal-space-sm) 0 var(--portal-space-xl);
+  font-size: 0.875rem;
+  color: var(--portal-inkMuted);
+}
+
+body.ui-neon-tactical .portal-legal-body section {
+  margin-bottom: var(--portal-space-lg);
+}
+
+body.ui-neon-tactical .portal-legal-body h2 {
+  margin: 0 0 var(--portal-space-sm);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--portal-ink);
+}
+
+body.ui-neon-tactical .portal-legal-body p {
+  margin: 0 0 var(--portal-space-sm);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--portal-inkSecondary);
+}
+
+body.ui-neon-tactical .portal-legal-body p:last-child {
+  margin-bottom: 0;
+}
+
+body.ui-neon-tactical .portal-legal-foot {
+  margin-top: var(--portal-space-xl);
+  padding-top: var(--portal-space-lg);
+  border-top: 1px solid var(--portal-border);
+}
+
+body.ui-neon-tactical .portal-legal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--portal-space-md);
+  margin-bottom: var(--portal-space-sm);
+}
+
+body.ui-neon-tactical .portal-legal-nav a {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--portal-accent);
+  text-decoration: none;
+}
+
+body.ui-neon-tactical .portal-legal-version {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--portal-inkMuted);
 }
 
 /* ─── Launch error ─── */
@@ -728,13 +567,31 @@ body.ui-neon-tactical .arcade-launch-error {
   justify-content: center;
   height: 100%;
   text-align: center;
-  padding: 24px;
-  color: var(--color-textPrimary);
-  font-family: 'Orbitron', sans-serif;
+  padding: var(--portal-space-lg);
+  background: var(--portal-canvas);
+  color: var(--portal-ink);
+  font-family: var(--portal-font-body);
+}
+
+body.ui-neon-tactical .arcade-launch-error h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
 }
 
 body.ui-neon-tactical .arcade-launch-error p {
-  color: var(--color-textSecondary);
-  margin: 12px 0 20px;
-  font-family: Rajdhani, sans-serif;
+  color: var(--portal-inkSecondary);
+  margin: var(--portal-space-md) 0 var(--portal-space-lg);
+  max-width: 28em;
+  line-height: 1.5;
+}
+
+body.ui-neon-tactical .arcade-launch-error .btn {
+  font-family: var(--portal-font-body);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.ui-neon-tactical .arcade-hub *,
+  body.ui-neon-tactical .portal-legal * {
+    transition: none !important;
+  }
 }
