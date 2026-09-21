@@ -16,6 +16,10 @@ const LOADERS: Record<string, Loader> = {
     const mod = await import('@/games/catapult-chaos');
     return mod;
   },
+  'neon-snake': async () => {
+    const mod = await import('@/games/neon-snake');
+    return mod;
+  },
 };
 
 export async function loadGameModule(gameId: string): Promise<GameModule | null> {

@@ -1,0 +1,386 @@
+@import '@/games/shared/miniGameShared.css';
+
+.snake-root {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: hidden;
+  touch-action: none;
+  font-family: var(--mg-font-body);
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 0%, rgba(124, 92, 255, 0.14), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 80% 100%, rgba(255, 107, 53, 0.08), transparent 50%),
+    linear-gradient(180deg, #0d0b1a 0%, #12102a 50%, #0a0818 100%);
+  padding:
+    max(8px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right))
+    max(8px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+  box-sizing: border-box;
+}
+
+.snake-chrome {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.snake-title {
+  font-family: var(--mg-font-display);
+  font-size: clamp(1rem, 4vw, 1.35rem);
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: var(--mg-text);
+  margin: 0;
+}
+
+.snake-stage {
+  flex: 1;
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  gap: clamp(8px, 2vh, 16px);
+}
+
+.snake-hud {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: clamp(10px, 3vw, 20px);
+  flex-shrink: 0;
+}
+
+.snake-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 88px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(18, 16, 42, 0.85);
+  border: 1px solid rgba(124, 92, 255, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.snake-stat-label {
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mg-text-muted);
+  font-weight: 600;
+}
+
+.snake-stat-value {
+  font-family: var(--mg-font-display);
+  font-size: clamp(0.95rem, 3.5vw, 1.15rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--mg-cyan);
+  text-shadow: 0 0 12px rgba(0, 229, 200, 0.35);
+}
+
+.snake-stat-value.gold {
+  color: var(--mg-gold);
+  text-shadow: 0 0 12px rgba(255, 213, 79, 0.35);
+}
+
+.snake-board-wrap {
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(0, 229, 200, 0.15),
+    0 0 40px rgba(124, 92, 255, 0.12);
+}
+
+.snake-board-wrap.is-shake {
+  animation: snake-shake 0.35s ease-out;
+}
+
+@keyframes snake-shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-4px, 2px); }
+  40% { transform: translate(4px, -2px); }
+  60% { transform: translate(-3px, -2px); }
+  80% { transform: translate(3px, 2px); }
+}
+
+.snake-canvas {
+  display: block;
+  touch-action: none;
+  width: 100%;
+  height: auto;
+}
+
+.snake-toolbar {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.snake-icon-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  background: rgba(18, 16, 42, 0.9);
+  color: var(--mg-cyan);
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 150ms var(--mg-ease-out), border-color 150ms;
+}
+
+.snake-icon-btn:focus-visible {
+  outline: 2px solid var(--mg-cyan);
+  outline-offset: 2px;
+}
+
+.snake-icon-btn:active,
+.snake-icon-btn.is-active {
+  transform: scale(0.94);
+  border-color: var(--mg-cyan);
+  background: rgba(0, 229, 200, 0.12);
+}
+
+.snake-dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 8px;
+  width: min(220px, 72vw);
+  max-width: 240px;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.snake-dpad-btn {
+  aspect-ratio: 1;
+  min-height: 52px;
+  border-radius: 14px;
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  background: linear-gradient(165deg, rgba(28, 24, 52, 0.95), rgba(14, 12, 32, 0.92));
+  color: var(--mg-text);
+  font-size: 1.25rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 100ms, background 100ms, border-color 100ms;
+}
+
+.snake-dpad-btn:focus-visible {
+  outline: 2px solid var(--mg-cyan);
+  outline-offset: 2px;
+}
+
+.snake-dpad-btn:active,
+.snake-dpad-btn.is-pressed {
+  transform: scale(0.92);
+  border-color: var(--mg-cyan);
+  background: rgba(0, 229, 200, 0.15);
+  color: var(--mg-cyan);
+}
+
+.snake-dpad-center {
+  opacity: 0.35;
+  pointer-events: none;
+  font-size: 0.65rem;
+}
+
+.snake-dpad-empty {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.snake-hint-desktop {
+  font-size: 0.78rem;
+  color: var(--mg-text-muted);
+  text-align: center;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.snake-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(8, 6, 18, 0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.snake-overlay.hidden {
+  display: none;
+}
+
+.snake-panel {
+  text-align: center;
+  max-width: 360px;
+  width: 100%;
+  padding: 28px 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  background: linear-gradient(168deg, rgba(24, 20, 48, 0.98), rgba(10, 8, 24, 0.99));
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.5);
+}
+
+.snake-panel-title {
+  font-family: var(--mg-font-display);
+  font-size: clamp(1.8rem, 8vw, 2.4rem);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  margin: 0 0 8px;
+  color: var(--mg-text);
+}
+
+.snake-panel-tag {
+  font-size: 0.9rem;
+  color: var(--mg-cyan);
+  margin: 0 0 20px;
+  line-height: 1.45;
+}
+
+.snake-panel-hint {
+  font-size: 0.78rem;
+  color: var(--mg-text-muted);
+  margin: 0 0 20px;
+}
+
+.snake-panel-score {
+  font-family: var(--mg-font-display);
+  font-size: clamp(1.6rem, 7vw, 2rem);
+  font-weight: 800;
+  color: var(--mg-cyan);
+  font-variant-numeric: tabular-nums;
+  margin: 12px 0;
+}
+
+.snake-record-badge {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #0d0b1a;
+  background: linear-gradient(90deg, var(--mg-gold), #ffaa00);
+  margin-bottom: 12px;
+}
+
+.snake-panel-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.snake-btn {
+  font-family: var(--mg-font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 14px 22px;
+  border-radius: 10px;
+  border: 0;
+  cursor: pointer;
+  transition: transform 150ms var(--mg-ease-out);
+}
+
+.snake-btn:focus-visible {
+  outline: 2px solid var(--mg-cyan);
+  outline-offset: 2px;
+}
+
+.snake-btn-primary {
+  color: #0d0b1a;
+  background: linear-gradient(135deg, var(--mg-cyan), #00a896);
+  box-shadow: 0 4px 20px rgba(0, 229, 200, 0.35);
+}
+
+.snake-btn-secondary {
+  color: var(--mg-text);
+  background: rgba(124, 92, 255, 0.2);
+  border: 1px solid rgba(124, 92, 255, 0.4);
+}
+
+.snake-btn:active {
+  transform: scale(0.97);
+}
+
+.snake-level-banner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 12;
+  pointer-events: none;
+  font-family: var(--mg-font-display);
+  font-size: clamp(1.2rem, 5vw, 1.6rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--mg-gold);
+  text-shadow: 0 0 24px rgba(255, 213, 79, 0.6);
+  opacity: 0;
+  transition: opacity 200ms;
+}
+
+.snake-level-banner.visible {
+  opacity: 1;
+  animation: snake-level-pop 900ms var(--mg-ease-out);
+}
+
+@keyframes snake-level-pop {
+  0% { transform: translate(-50%, -50%) scale(0.7); opacity: 0; }
+  30% { transform: translate(-50%, -50%) scale(1.05); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+
+@media (min-width: 769px) and (pointer: fine) {
+  .snake-dpad {
+    display: none;
+  }
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+  .snake-hint-desktop {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .snake-board-wrap.is-shake,
+  .snake-level-banner.visible {
+    animation: none;
+  }
+
+  .snake-overlay {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
