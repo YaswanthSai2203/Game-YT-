@@ -34,6 +34,10 @@
   opacity: 0.35;
 }
 
+.cc-root.cc-playing::after {
+  opacity: 0;
+}
+
 .cc-hud-launch .mg-hud-pill-gold {
   opacity: 0.45;
 }
@@ -136,10 +140,6 @@
 
 .cc-panel.hidden {
   display: none !important;
-}
-
-.cc-overlay.cc-overlay-hidden {
-  display: none;
 }
 
 @keyframes cc-record-pulse {

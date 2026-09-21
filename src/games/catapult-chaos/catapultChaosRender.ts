@@ -504,22 +504,18 @@ export function drawLaunchHud(
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
-  phase: 'aim' | 'power',
   angle: number,
   powerMeter: number,
   powerZone: PowerZone,
   worldName: string,
   weather: string,
   pulse: number,
-  angleReady = false,
+  charging = false,
 ): void {
   const pad = 16;
   const bottom = h - Math.max(20, pad);
 
-  // Top instruction pill
-  const msg = phase === 'aim'
-    ? (angleReady ? 'TAP TO CHARGE POWER' : 'DRAG UP/DOWN TO AIM')
-    : 'TAP OR RELEASE ON PERFECT';
+  const msg = charging ? 'RELEASE TO LAUNCH' : 'HOLD & DRAG TO AIM · POWER BUILDS WHILE HELD';
   ctx.fillStyle = 'rgba(10, 14, 26, 0.82)';
   ctx.strokeStyle = 'rgba(0, 240, 255, 0.4)';
   ctx.lineWidth = 1;
@@ -544,7 +540,7 @@ export function drawLaunchHud(
   ctx.font = '600 9px Rajdhani, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(worldName.toUpperCase(), w / 2, pillY + 14);
-  ctx.fillStyle = phase === 'power' ? CC_PALETTE.gold : CC_PALETTE.cyan;
+  ctx.fillStyle = charging ? CC_PALETTE.gold : CC_PALETTE.cyan;
   ctx.font = 'bold 11px Orbitron, sans-serif';
   ctx.globalAlpha = 0.85 + Math.sin(pulse * 3) * 0.15;
   ctx.fillText(msg, w / 2, pillY + 34);
@@ -616,11 +612,11 @@ export function drawLaunchHud(
   ctx.lineWidth = 1;
   ctx.strokeRect(barX, barY, barW, barH);
 
-  if (phase === 'power') {
+  if (charging || powerMeter > 0.02) {
     const fillW = barW * powerMeter;
     ctx.fillStyle = powerZoneColor(powerZone);
     ctx.shadowColor = powerZoneColor(powerZone);
-    ctx.shadowBlur = 14;
+    ctx.shadowBlur = charging ? 14 : 6;
     ctx.fillRect(barX, barY, fillW, barH);
     ctx.shadowBlur = 0;
 
@@ -628,11 +624,11 @@ export function drawLaunchHud(
     ctx.font = 'bold 11px Orbitron, sans-serif';
     ctx.fillText(powerZone.toUpperCase(), w / 2, barY + barH + 18);
   } else {
-    ctx.fillStyle = 'rgba(0, 240, 255, 0.15)';
-    ctx.fillRect(barX, barY, barW * 0.3, barH);
-    ctx.fillStyle = 'rgba(136, 146, 168, 0.8)';
+    ctx.fillStyle = 'rgba(0, 240, 255, 0.12)';
+    ctx.fillRect(barX, barY, barW * 0.55, barH);
+    ctx.fillStyle = 'rgba(136, 146, 168, 0.85)';
     ctx.font = '600 10px Rajdhani, sans-serif';
-    ctx.fillText('Tap when ready', w / 2, barY + barH + 18);
+    ctx.fillText('Hold to charge', w / 2, barY + barH + 18);
   }
 
   const labels = ['Weak', 'Good', 'Perfect', 'Overload'];
