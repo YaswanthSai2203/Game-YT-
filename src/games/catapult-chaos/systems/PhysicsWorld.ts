@@ -13,6 +13,7 @@ export interface PlayerBody {
   angularVel: number;
   radius: number;
   mass: number;
+  impactResist: number;
   onGround: boolean;
   momentum: MomentumState;
   alive: boolean;
@@ -42,6 +43,7 @@ export class PhysicsWorld {
     angularVel: 0,
     radius: 15,
     mass: 1,
+    impactResist: 1,
     onGround: false,
     momentum: 'stable',
     alive: true,
@@ -62,6 +64,7 @@ export class PhysicsWorld {
       angularVel: 0,
       radius: 15,
       mass: 1,
+      impactResist: 1,
       onGround: true,
       momentum: 'stable',
       alive: true,
@@ -152,14 +155,14 @@ export class PhysicsWorld {
       if (!hit) continue;
 
       const impact = Math.hypot(p.vx, p.vy);
-      this.handleObjectHit(o, impact);
-
-      if (!p.alive) return;
 
       const nx = hit.nx;
       const ny = hit.ny;
       const relVel = p.vx * nx + p.vy * ny;
       if (relVel < 0) {
+        this.handleObjectHit(o, impact);
+        if (!p.alive) return;
+
         const bounce = o.elasticity;
         p.vx -= (1 + bounce) * relVel * nx;
         p.vy -= (1 + bounce) * relVel * ny;
@@ -244,7 +247,7 @@ export class PhysicsWorld {
 
   private applyImpactDamage(impact: number): void {
     const p = this.player;
-    const resist = 1;
+    const resist = p.impactResist || 1;
     if (impact > 18 / resist) {
       p.alive = false;
       p.momentum = 'critical';

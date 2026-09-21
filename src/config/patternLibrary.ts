@@ -97,9 +97,9 @@ export const PATTERN_LIBRARY: PatternDef[] = [
     tags: ['hunter'],
     steps: [
       { type: 'firewall', lane: 0 },
-      { type: 'firewall', lane: 1 },
       { type: 'firewall', lane: 2 },
-      { type: 'shard', lane: 'gap' },
+      { type: 'shard', lane: 1 },
+      { type: 'shard', lane: 'random' },
     ],
   },
   {
@@ -133,8 +133,8 @@ export const PATTERN_LIBRARY: PatternDef[] = [
     tags: ['hunter'],
     steps: [
       { type: 'firewall', lane: 0 },
-      { type: 'firewall', lane: 1 },
       { type: 'firewall', lane: 2 },
+      { type: 'shard', lane: 1 },
     ],
   },
 ];

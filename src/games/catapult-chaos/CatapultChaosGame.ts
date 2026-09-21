@@ -121,7 +121,6 @@ export class CatapultChaosGame {
     window.addEventListener('keydown', this.boundKeyDown);
     window.addEventListener('keyup', this.boundKeyUp);
     this.canvas.addEventListener('pointerdown', this.boundPointerDown, { passive: false });
-    this.root.addEventListener('pointerdown', this.boundPointerDown, { passive: false });
     window.addEventListener('pointermove', this.boundPointerMove, { passive: false });
     window.addEventListener('pointerup', this.boundPointerUp);
     window.addEventListener('pointercancel', this.boundPointerCancel);
@@ -260,11 +259,13 @@ export class CatapultChaosGame {
 
   private launch(): void {
     const charDef = CHARACTERS[this.characterId]!;
-    const basePower = 11 + this.powerMeter * 14;
+    const safePower = Math.min(this.powerMeter, 0.78);
+    const basePower = 11 + safePower * 14;
     const zoneBonus = this.powerZone === 'perfect' ? 1.12 : this.powerZone === 'good' ? 1.04 : this.powerZone === 'overload' ? 0.92 : 0.85;
     const vx = Math.cos(-this.launchAngle) * basePower * zoneBonus;
     const vy = Math.sin(-this.launchAngle) * basePower * zoneBonus;
     this.physics.player.mass = charDef.mass;
+    this.physics.player.impactResist = charDef.impactResist;
     this.physics.launchPlayer(vx, vy);
     this.score.setPrecision(this.powerZone === 'perfect', this.powerZone === 'perfect' ? 2500 : this.powerZone === 'good' ? 800 : 0);
     const perfect = this.powerZone === 'perfect';
@@ -710,7 +711,6 @@ export class CatapultChaosGame {
     window.removeEventListener('keydown', this.boundKeyDown);
     window.removeEventListener('keyup', this.boundKeyUp);
     this.canvas.removeEventListener('pointerdown', this.boundPointerDown);
-    this.root.removeEventListener('pointerdown', this.boundPointerDown);
     window.removeEventListener('pointermove', this.boundPointerMove);
     window.removeEventListener('pointerup', this.boundPointerUp);
     window.removeEventListener('pointercancel', this.boundPointerCancel);

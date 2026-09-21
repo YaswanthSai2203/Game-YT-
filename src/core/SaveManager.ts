@@ -160,24 +160,15 @@ function migrateSave(parsed: Partial<SaveData>): SaveData {
   return merged;
 }
 
-/** Estimate local rank percentile from score (for motivational game-over UI) */
-export function estimateRankPercentile(score: number): number {
-  if (score >= 25000) return 99;
-  if (score >= 15000) return 95;
-  if (score >= 10000) return 90;
-  if (score >= 7500) return 80;
-  if (score >= 5000) return 70;
-  if (score >= 3000) return 55;
-  if (score >= 1500) return 40;
-  if (score >= 750) return 25;
-  if (score >= 300) return 15;
-  if (score >= 100) return 8;
-  return 3;
+/** @deprecated Local-only estimate — do not show as global rank. */
+export function estimateRankPercentile(_score: number): number {
+  return 50;
 }
 
 export class SaveManager {
   private data: SaveData;
   private events: EventBus;
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(events: EventBus) {
     this.events = events;
@@ -206,7 +197,7 @@ export class SaveManager {
         if (parsed.version === GAME.SAVE_VERSION) {
           return migrateSave(parsed);
         }
-        if (parsed.version === 1 || parsed.version === 2 || !parsed.version) {
+        if (parsed.version === 3 || parsed.version === 4 || parsed.version === 1 || parsed.version === 2 || !parsed.version) {
           return migrateSave(parsed);
         }
       }
@@ -217,6 +208,18 @@ export class SaveManager {
   }
 
   persist(): void {
+    if (this.persistTimer) return;
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      this.persistNow();
+    }, 400);
+  }
+
+  persistNow(): void {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
     } catch {

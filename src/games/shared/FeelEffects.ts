@@ -17,6 +17,12 @@ export class FeelEffects {
   comboBanner = 0;
   comboBannerLevel = 0;
   particles: Particle[] = [];
+  private skipMotion: boolean;
+
+  constructor(reducedMotion?: boolean) {
+    this.skipMotion = reducedMotion
+      ?? (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
 
   reset(): void {
     this.shake = 0;
@@ -26,10 +32,12 @@ export class FeelEffects {
   }
 
   bumpShake(amount: number): void {
+    if (this.skipMotion) return;
     this.shake = Math.min(18, this.shake + amount);
   }
 
   bumpFlash(color: string, strength = 0.45): void {
+    if (this.skipMotion) return;
     this.flash = Math.min(1, this.flash + strength);
     this.flashColor = color;
   }
@@ -68,6 +76,10 @@ export class FeelEffects {
       p.life -= 0.028 * dt;
     }
     this.particles = this.particles.filter((p) => p.life > 0);
+
+    if (this.skipMotion) {
+      return { shakeX: 0, shakeY: 0 };
+    }
 
     const s = this.shake;
     return {

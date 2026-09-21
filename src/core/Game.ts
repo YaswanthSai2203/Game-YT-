@@ -12,7 +12,6 @@ import { SceneManager } from '@/core/SceneManager';
 import { GameScene } from '@/scenes/GameScene';
 import { UIManager } from '@/ui/UIManager';
 import { clamp } from '@/utils/math';
-import { FAKE_ENDING_SCORE } from '@/config/sentientConfig';
 import { GlobalLeaderboardService } from '@/core/GlobalLeaderboardService';
 import { isYouTubePlayablesRuntime } from '@/config/platform';
 import { notifyFirstFrameReady, notifyGameReady, pushSaveToPlayables } from '@/platform/playables';
@@ -269,7 +268,6 @@ export class Game {
     this.input.setEnabled(false);
     this.setCanvasVisible(false);
     const { newHighScore, xpGained, creditsEarned, syncUnlocks, signalFragments } = this.save.recordRun(stats);
-    if (stats.shards > 0) this.ui.contributeToMilestone(stats.shards);
     const mem = this.save.save.worldMemory;
 
     const showOver = (globalRank?: number, globalTotal?: number): void => {
@@ -292,14 +290,7 @@ export class Game {
     }
 
     const afterGlobal = (globalRank?: number, globalTotal?: number): void => {
-      if (stats.score >= FAKE_ENDING_SCORE && !mem.fakeEndingSeen) {
-        void this.ui.playFakeEnding(stats.score).then(() => {
-          this.save.markFakeEndingSeen();
-          showOver(globalRank, globalTotal);
-        });
-      } else {
-        showOver(globalRank, globalTotal);
-      }
+      showOver(globalRank, globalTotal);
     };
 
     if (stats.mode !== 'practice' && this.globalLb.isEnabled()) {
