@@ -1,8 +1,9 @@
 import { GAME } from '@/config/constants';
-import { getGameCatalogEntry, isGamePlayable } from '@/config/gamesRegistry';
+import { ARCADE, getGameCatalogEntry, isGamePlayable } from '@/config/gamesRegistry';
 import { loadGameModule } from '@/games/gameLoaders';
 import type { GameHandle } from '@/games/types';
 import { HubUI } from '@/portal/HubUI';
+import { LegalPages, resolveLegalPageFromPath, type LegalPageId } from '@/portal/LegalPages';
 import { isYouTubePlayablesRuntime } from '@/config/platform';
 import {
   bindPlayablesLifecycle,
@@ -14,10 +15,13 @@ const LAST_GAME_KEY = 'neon-arcade-last-game';
 export class PortalApp {
   private container: HTMLElement;
   private hub: HubUI | null = null;
+  private legal: LegalPages | null = null;
   private activeGame: GameHandle | null = null;
+  private popStateHandler = () => this.handleRouteChange();
 
   constructor(container: HTMLElement) {
     this.container = container;
+    window.addEventListener('popstate', this.popStateHandler);
   }
 
   async init(): Promise<void> {
@@ -25,6 +29,15 @@ export class PortalApp {
     const directId = this.resolveDirectLaunchId();
     if (directId) {
       await this.launchGame(directId);
+      return;
+    }
+    this.handleRouteChange();
+  }
+
+  private handleRouteChange(): void {
+    const legalPage = resolveLegalPageFromPath(window.location.pathname);
+    if (legalPage) {
+      this.showLegal(legalPage);
       return;
     }
     this.showHub();
@@ -40,13 +53,34 @@ export class PortalApp {
     return null;
   }
 
+  private setPortalSurface(active: boolean): void {
+    document.body.classList.toggle('portal-active', active);
+    const theme = active ? '#F5F3EF' : '#0a0e1a';
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme);
+  }
+
   private showHub(): void {
+    this.legal?.destroy();
+    this.legal = null;
     this.clearContainer();
     document.body.classList.remove('gameplay-active');
-    document.title = 'NEON ARCADE';
+    this.setPortalSurface(true);
+    if (window.location.pathname !== '/') {
+      window.history.replaceState({}, '', '/');
+    }
+    document.title = ARCADE.TITLE;
     this.hub = new HubUI(this.container, (gameId) => {
       void this.launchGame(gameId);
     });
+  }
+
+  private showLegal(pageId: LegalPageId): void {
+    this.hub?.destroy();
+    this.hub = null;
+    this.clearContainer();
+    document.body.classList.remove('gameplay-active');
+    this.setPortalSurface(true);
+    this.legal = new LegalPages(this.container, pageId, () => this.showHub());
   }
 
   private async launchGame(gameId: string): Promise<void> {
@@ -55,7 +89,10 @@ export class PortalApp {
 
     this.hub?.destroy();
     this.hub = null;
+    this.legal?.destroy();
+    this.legal = null;
     this.clearContainer();
+    this.setPortalSurface(false);
 
     const mod = await loadGameModule(gameId);
     if (!mod) {
@@ -69,14 +106,16 @@ export class PortalApp {
       });
       localStorage.setItem(LAST_GAME_KEY, gameId);
       document.title = entry.title;
+      document.body.classList.add('gameplay-active');
       this.bindPlayablesForActiveGame();
     } catch (error) {
       console.error(`Failed to launch ${gameId}:`, error);
       this.activeGame = null;
+      this.setPortalSurface(true);
       this.container.innerHTML = `
         <div class="arcade-launch-error">
           <h1>${entry.title}</h1>
-          <p>Failed to load. Please refresh or return to the arcade.</p>
+          <p>Failed to load. Refresh the page or return to the arcade.</p>
           <button type="button" class="btn btn-primary" id="arcade-error-home">Back to Arcade</button>
         </div>
       `;
@@ -113,9 +152,12 @@ export class PortalApp {
   }
 
   destroy(): void {
+    window.removeEventListener('popstate', this.popStateHandler);
     this.hub?.destroy();
+    this.legal?.destroy();
     this.activeGame?.destroy();
     this.hub = null;
+    this.legal = null;
     this.activeGame = null;
   }
 }

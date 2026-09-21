@@ -14,7 +14,8 @@ export interface GameCatalogEntry {
 
 export const ARCADE = {
   TITLE: 'NEON ARCADE',
-  SUBTITLE: 'Instant-play neon worlds — no installs, no waits',
+  SUBTITLE: 'Mini games that run in your browser. Tap a title to start.',
+  FOOTNOTE: 'Progress saves locally on this device.',
 } as const;
 
 /** Portal catalog — add new games here and register a loader in gameLoaders.ts */
