@@ -396,6 +396,34 @@ body.ui-neon-tactical .arcade-cover-catapult-chaos .arcade-cover-art::after {
   background: #ffd54f;
 }
 
+body.ui-neon-tactical .arcade-cover-neon-snake .arcade-cover-art {
+  background: linear-gradient(180deg, #0d0b1a 0%, #12102a 100%);
+}
+
+body.ui-neon-tactical .arcade-cover-neon-snake .arcade-cover-art::before {
+  content: '';
+  position: absolute;
+  left: 18%;
+  top: 38%;
+  width: 62%;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #7c5cff, #00e5c8);
+  box-shadow: 0 0 10px rgba(0, 229, 200, 0.4);
+}
+
+body.ui-neon-tactical .arcade-cover-neon-snake .arcade-cover-art::after {
+  content: '';
+  position: absolute;
+  right: 22%;
+  top: 48%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff6b35;
+  box-shadow: 0 0 10px rgba(255, 107, 53, 0.5);
+}
+
 body.ui-neon-tactical .arcade-cover-void-drift .arcade-cover-art {
   background: linear-gradient(180deg, #0e0a18 0%, #161022 100%);
 }
