@@ -15,6 +15,9 @@ import {
   drawWindIndicator,
   drawWorldObject,
 } from '@/games/catapult-chaos/catapultChaosRender';
+import { AnimatedNumber } from '@/games/shared/AnimatedNumber';
+import { animateScoreElement } from '@/games/shared/animateScore';
+import { runGameBoot } from '@/games/shared/GameBoot';
 import { CatapultSfx } from '@/games/catapult-chaos/systems/CatapultSfx';
 import { ComboManager } from '@/games/catapult-chaos/systems/ComboManager';
 import { FeelEffects } from '@/games/catapult-chaos/systems/FeelEffects';
@@ -47,7 +50,10 @@ export class CatapultChaosGame {
   private paused = false;
   private lastTs = 0;
 
-  private phase: GamePhase = 'aim';
+  private phase: GamePhase = 'intro';
+  private distAnim = new AnimatedNumber();
+  private comboAnim = new AnimatedNumber();
+  private scoreCancel: (() => void) | null = null;
   private physics = new PhysicsWorld();
   private combo = new ComboManager();
   private score = new ScoreManager();
@@ -95,7 +101,7 @@ export class CatapultChaosGame {
     this.hiCombo = parseInt(localStorage.getItem(HI_COMBO_KEY) ?? '0', 10) || 0;
 
     this.root = document.createElement('div');
-    this.root.className = 'cc-root';
+    this.root.className = 'cc-root mg-root';
     this.root.innerHTML = this.buildDom();
     container.appendChild(this.root);
 
@@ -108,6 +114,7 @@ export class CatapultChaosGame {
 
     this.root.querySelector('[data-action="hub"]')?.addEventListener('click', () => this.onExitToHub?.());
     this.root.querySelector('[data-action="retry"]')?.addEventListener('click', () => this.startRun());
+    this.root.querySelector('[data-action="intro"]')?.addEventListener('click', () => this.beginFromIntro());
     this.root.querySelector('#cc-ability')?.addEventListener('click', () => this.useAbility());
 
     window.addEventListener('resize', this.boundResize);
@@ -121,8 +128,15 @@ export class CatapultChaosGame {
 
     this.resize();
     this.initLevel();
-    this.beginLaunchSetup();
-    this.root.querySelector('#cc-overlay')?.classList.add('cc-overlay-hidden');
+    this.showIntro();
+  }
+
+  async boot(): Promise<void> {
+    await runGameBoot(this.root, {
+      title: 'CATAPULT CHAOS',
+      subtitle: 'Charging launch systems…',
+      minMs: 950,
+    });
     this.running = true;
     this.lastTs = performance.now();
     this.raf = requestAnimationFrame((t) => this.loop(t));
@@ -130,30 +144,55 @@ export class CatapultChaosGame {
 
   private buildDom(): string {
     return `
-      <div class="cc-chrome">
-        <button type="button" class="cc-back" data-action="hub">
-          <span class="ms-icon" aria-hidden="true">arrow_back</span>
+      <div class="mg-chrome">
+        <button type="button" class="mg-back" data-action="hub">
+          <span aria-hidden="true">←</span>
           <span>Arcade</span>
         </button>
-        <div class="cc-hud" id="cc-hud">
-          <div class="cc-hud-pill"><span class="cc-hud-label">DIST</span><span id="cc-dist">0m</span></div>
-          <div class="cc-hud-pill cc-hud-combo"><span class="cc-hud-label">COMBO</span><span id="cc-combo">×0</span></div>
+        <div class="mg-hud" id="cc-hud">
+          <div class="mg-hud-pill mg-hud-pill-accent">
+            <span class="mg-hud-label">Distance</span>
+            <span class="mg-hud-value mg-hud-value-live" id="cc-dist">0m</span>
+          </div>
+          <div class="mg-hud-pill mg-hud-pill-gold">
+            <span class="mg-hud-label">Combo</span>
+            <span class="mg-hud-value mg-hud-value-gold" id="cc-combo">×0</span>
+          </div>
         </div>
       </div>
       <canvas class="cc-canvas" aria-label="Catapult Chaos"></canvas>
-      <div class="cc-overlay cc-overlay-hidden" id="cc-overlay">
-        <div class="cc-panel hidden" id="cc-panel-results">
-          <p class="cc-eyebrow">Run complete</p>
+      <div class="mg-overlay" id="cc-overlay">
+        <div class="mg-panel" id="cc-panel-intro">
+          <p class="mg-eyebrow">Green Valley</p>
+          <h1 class="mg-title">CATAPULT CHAOS</h1>
+          <p class="mg-sub">Aim, charge, launch. Chain combos through the valley.</p>
+          <p class="mg-hint">Drag to aim · Tap to charge power · Steer in the air</p>
+          <button type="button" class="mg-cta" data-action="intro">Enter range</button>
+        </div>
+        <div class="mg-panel hidden" id="cc-panel-results">
+          <p class="mg-eyebrow">Run complete</p>
+          <p class="mg-badge hidden" id="cc-results-record">New personal best</p>
           <p class="cc-results-total" id="cc-results-total">0</p>
           <div class="cc-results-grid" id="cc-results-grid"></div>
-          <p class="cc-results-record hidden" id="cc-results-record">NEW PERSONAL BEST</p>
           <div class="cc-results-tips" id="cc-results-tips"></div>
           <p class="cc-results-near hidden" id="cc-results-near"></p>
-          <button type="button" class="cc-cta" data-action="retry">Play again</button>
+          <button type="button" class="mg-cta" data-action="retry">Play again</button>
         </div>
       </div>
       <button type="button" class="cc-ability hidden" id="cc-ability" aria-label="Ability">⚡</button>
     `;
+  }
+
+  private showIntro(): void {
+    this.phase = 'intro';
+    this.root.querySelector('#cc-panel-intro')?.classList.remove('hidden');
+    this.root.querySelector('#cc-panel-results')?.classList.add('hidden');
+    this.root.querySelector('#cc-overlay')?.classList.remove('cc-overlay-hidden');
+  }
+
+  private beginFromIntro(): void {
+    this.sfx.ensure();
+    this.beginLaunchSetup();
   }
 
   private initLevel(): void {
@@ -179,10 +218,14 @@ export class CatapultChaosGame {
   }
 
   private beginLaunchSetup(): void {
+    this.scoreCancel?.();
+    this.scoreCancel = null;
     this.initLevel();
     this.combo.reset();
     this.score.reset();
     this.feel.reset();
+    this.distAnim.snap(0);
+    this.comboAnim.snap(0);
     this.lastPowerZone = 'good';
     this.launchAngle = 0.75;
     this.powerMeter = 0;
@@ -280,8 +323,11 @@ export class CatapultChaosGame {
 
   private showResults(bd: ScoreBreakdown, isRecord: boolean): void {
     this.showPanel('cc-panel-results');
-    const totalEl = this.root.querySelector('#cc-results-total');
-    if (totalEl) totalEl.textContent = bd.total.toLocaleString();
+    const totalEl = this.root.querySelector('#cc-results-total') as HTMLElement | null;
+    if (totalEl) {
+      totalEl.classList.toggle('is-record', isRecord);
+      this.scoreCancel = animateScoreElement(totalEl, bd.total);
+    }
     const grid = this.root.querySelector('#cc-results-grid');
     if (grid) {
       grid.innerHTML = `
@@ -328,7 +374,7 @@ export class CatapultChaosGame {
   }
 
   private hideAllPanels(): void {
-    this.root.querySelectorAll('.cc-panel').forEach((el) => el.classList.add('hidden'));
+    this.root.querySelectorAll('.mg-panel').forEach((el) => el.classList.add('hidden'));
   }
 
   private onKeyDown(e: KeyboardEvent): void {
@@ -360,7 +406,7 @@ export class CatapultChaosGame {
   }
 
   private onPointerDown(e: PointerEvent): void {
-    if ((e.target as HTMLElement).closest('.cc-back, .cc-cta, .cc-ability, .cc-panel')) return;
+    if ((e.target as HTMLElement).closest('.mg-back, .mg-cta, .cc-ability, .mg-panel')) return;
     this.sfx.ensure();
     if (this.phase === 'aim') {
       e.preventDefault();
@@ -415,7 +461,8 @@ export class CatapultChaosGame {
   }
 
   private handlePrimaryAction(): void {
-    if (this.phase === 'aim') this.beginPowerPhase();
+    if (this.phase === 'intro') this.beginFromIntro();
+    else if (this.phase === 'aim') this.beginPowerPhase();
     else if (this.phase === 'power') this.releasePower();
     else if (this.phase === 'results') this.startRun();
   }
@@ -576,8 +623,12 @@ export class CatapultChaosGame {
 
       const distEl = this.root.querySelector('#cc-dist');
       const comboEl = this.root.querySelector('#cc-combo');
-      if (distEl) distEl.textContent = `${meters.toLocaleString()}m`;
-      if (comboEl) comboEl.textContent = `×${this.combo.combo}`;
+      this.distAnim.set(meters);
+      this.comboAnim.set(this.combo.combo);
+      this.distAnim.tick(dt);
+      this.comboAnim.tick(dt);
+      if (distEl) distEl.textContent = `${this.distAnim.rounded().toLocaleString()}m`;
+      if (comboEl) comboEl.textContent = `×${this.comboAnim.rounded()}`;
     }
 
     if (this.phase === 'aim' || this.phase === 'power') {
@@ -653,6 +704,7 @@ export class CatapultChaosGame {
 
   destroy(): void {
     this.running = false;
+    this.scoreCancel?.();
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.boundResize);
     window.removeEventListener('keydown', this.boundKeyDown);
@@ -677,7 +729,9 @@ class CatapultChaosHandle implements GameHandle {
 }
 
 export async function launch(container: HTMLElement, options?: GameLaunchOptions): Promise<GameHandle> {
-  return new CatapultChaosHandle(new CatapultChaosGame(container, options));
+  const game = new CatapultChaosGame(container, options);
+  await game.boot();
+  return new CatapultChaosHandle(game);
 }
 
 const module: GameModule = { launch };

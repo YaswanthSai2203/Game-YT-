@@ -13,6 +13,7 @@ import { analyzePlaystyle } from '@/utils/playstyleAnalysis';
 import { RUN_THEME_LORE, getLoreWhisperSuffix, type RunThemeId, type GridMood } from '@/config/directorConfig';
 import { LEADERBOARD } from '@/config/leaderboardConfig';
 import { formatScore, formatTime } from '@/utils/math';
+import { animateScoreElement } from '@/games/shared/animateScore';
 import { isCompactUI } from '@/utils/uiMode';
 import { msIcon, pointsLabel } from '@/utils/icons';
 import { bindImmediatePress, bindTap } from '@/utils/tap';
@@ -57,6 +58,8 @@ export class UIManager {
   private investigationFocusId: string | null = null;
   private lastScorePunchAt = 0;
   private lastHypeAt = 0;
+  private displayedScore = 0;
+  private scoreAnimCancel: (() => void) | null = null;
   private tutorialDismissResolve: (() => void) | null = null;
   private pauseModalEl: HTMLElement | null = null;
   private shopTab: 'upgrades' | 'cosmetics' = 'upgrades';
@@ -308,7 +311,15 @@ export class UIManager {
     const challengeText = this.overlay.querySelector('#hud-challenge-text');
     const comboCount = stats.comboCount ?? 0;
 
-    if (scoreEl) scoreEl.textContent = formatScore(stats.score);
+    if (scoreEl) {
+      const diff = stats.score - this.displayedScore;
+      if (Math.abs(diff) > 0.5) {
+        this.displayedScore += diff * 0.18;
+      } else {
+        this.displayedScore = stats.score;
+      }
+      scoreEl.textContent = formatScore(Math.round(this.displayedScore));
+    }
     if (timeEl) {
       if (stats.timeLimit > 0) {
         const remaining = Math.max(0, stats.timeLimit - stats.timeAlive);
@@ -1075,6 +1086,7 @@ export class UIManager {
   }
 
   private renderHUD(): void {
+    this.displayedScore = 0;
     const compact = isCompactUI();
     const skin = getHudSkin(compact ? 'minimal' : (this.save.save.unlocks.selectedHudSkin ?? 'default'));
     this.overlay.className = `screen screen-hud ghost-hud ${skin.cssClass}${compact ? ' hud-compact' : ''}`;
@@ -1435,7 +1447,7 @@ export class UIManager {
     this.overlay.innerHTML = syncPanel(`
       <p class="gameover-eyebrow">${title}</p>
       ${data.newHighScore ? '<div class="new-high-badge">★ New best score ★</div>' : ''}
-      <div class="${scoreClass}">${formatScore(data.score)}</div>
+      <div class="${scoreClass}" id="gameover-score-animate">${formatScore(0)}</div>
       <div class="gameover-stats-row">
         ${heroMetric('Shards', String(data.shards), 'cyan')}
         ${heroMetric('Time', formatTime(data.timeAlive), 'violet')}
@@ -1446,6 +1458,14 @@ export class UIManager {
         { action: 'menu', label: 'Menu', icon: 'home', variant: 'secondary' },
       ])}
     `, 'gameover-panel gameover-panel-simple gameover-panel-v2');
+
+    const scoreEl = this.overlay.querySelector('#gameover-score-animate') as HTMLElement | null;
+    if (scoreEl) {
+      this.scoreAnimCancel?.();
+      this.scoreAnimCancel = animateScoreElement(scoreEl, data.score, {
+        formatter: (n) => formatScore(n),
+      });
+    }
 
     this.bindGameOverActions(data);
   }

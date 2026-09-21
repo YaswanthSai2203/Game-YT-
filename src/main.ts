@@ -3,6 +3,7 @@ import { applyPortalTokensToRoot } from '@/config/portalTokens';
 import { bustStalePwaCache, PortalApp } from '@/portal/PortalApp';
 import '@/ui/styles/neonTactical.css';
 import '@/ui/styles/phaseTwo.css';
+import '@/ui/styles/gamePolish.css';
 import '@/ui/styles/hub.css';
 import '@fontsource/orbitron/700.css';
 import '@fontsource/orbitron/800.css';

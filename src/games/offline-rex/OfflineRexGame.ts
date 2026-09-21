@@ -1,4 +1,9 @@
 import type { GameHandle, GameLaunchOptions, GameModule } from '@/games/types';
+import { AnimatedNumber } from '@/games/shared/AnimatedNumber';
+import { animateScoreElement } from '@/games/shared/animateScore';
+import { FeelEffects } from '@/games/shared/FeelEffects';
+import { runGameBoot } from '@/games/shared/GameBoot';
+import { RexSfx } from '@/games/shared/RexSfx';
 import {
   drawCyberRex,
   drawDust,
@@ -49,11 +54,18 @@ export class OfflineRexGame {
   private groundOffset = 0;
   private bgOffset = 0;
   private pulse = 0;
-  private deathFlash = 0;
+  private scoreAnim = new AnimatedNumber();
+  private feel = new FeelEffects();
+  private sfx = new RexSfx();
+  private shakeX = 0;
+  private shakeY = 0;
+  private lastScoreMilestone = 0;
+  private wasGrounded = true;
+  private scoreCancel: (() => void) | null = null;
 
   private readonly gravity = 0.65;
   private readonly jumpForce = -12.5;
-  private readonly dinoX = 72;
+  private dinoX = 72;
   private readonly dinoStandW = 44;
   private readonly dinoStandH = 48;
   private readonly dinoDuckW = 56;
@@ -69,32 +81,48 @@ export class OfflineRexGame {
     this.hiScore = parseInt(localStorage.getItem('offline-rex-hi') ?? '0', 10) || 0;
 
     this.root = document.createElement('div');
-    this.root.className = 'offline-rex-root';
+    this.root.className = 'offline-rex-root mg-root';
     this.root.innerHTML = `
-      <div class="offline-rex-chrome">
-        <button type="button" class="offline-rex-back" data-action="hub">
-          <span class="offline-rex-back-icon" aria-hidden="true">←</span>
+      <div class="mg-chrome">
+        <button type="button" class="mg-back" data-action="hub">
+          <span aria-hidden="true">←</span>
           <span>Arcade</span>
         </button>
-        <div class="offline-rex-hud">
-          <div class="offline-rex-hud-pill">
-            <span class="offline-rex-hud-label">HI</span>
-            <span class="offline-rex-hi">${String(this.hiScore).padStart(5, '0')}</span>
+        <div class="mg-hud">
+          <div class="mg-hud-pill">
+            <span class="mg-hud-label">Best</span>
+            <span class="mg-hud-value offline-rex-hi">${this.hiScore.toLocaleString()}</span>
           </div>
-          <div class="offline-rex-hud-pill offline-rex-hud-score">
-            <span class="offline-rex-hud-label">SCORE</span>
-            <span class="offline-rex-score" id="offline-rex-score">00000</span>
+          <div class="mg-hud-pill mg-hud-pill-accent" id="offline-rex-score-pill">
+            <span class="mg-hud-label">Score</span>
+            <span class="mg-hud-value mg-hud-value-live" id="offline-rex-score">0</span>
           </div>
         </div>
       </div>
       <canvas class="offline-rex-canvas" aria-label="Offline Rex runner"></canvas>
-      <div class="offline-rex-overlay" id="offline-rex-overlay">
-        <div class="offline-rex-panel">
-          <p class="offline-rex-eyebrow">No signal</p>
-          <h1 class="offline-rex-title">OFFLINE REX</h1>
-          <p class="offline-rex-sub" id="offline-rex-msg">The grid is down — keep running</p>
-          <p class="offline-rex-hint">Tap to jump · Hold ↓ to duck under drones</p>
-          <p class="offline-rex-cta" id="offline-rex-cta">TAP TO START</p>
+      <div class="mg-overlay" id="offline-rex-overlay">
+        <div class="mg-panel" id="offline-rex-panel-intro">
+          <p class="mg-eyebrow">Signal lost</p>
+          <h1 class="mg-title">OFFLINE REX</h1>
+          <p class="mg-sub">The grid is down. Keep running until sync fails.</p>
+          <p class="mg-hint">Tap to jump · Hold ↓ to duck under drones</p>
+          <button type="button" class="mg-cta" id="offline-rex-start">Start run</button>
+        </div>
+        <div class="mg-panel hidden" id="offline-rex-panel-dead">
+          <p class="mg-eyebrow">Sync lost</p>
+          <p class="mg-badge hidden" id="offline-rex-record">New personal best</p>
+          <p class="mg-score-hero offline-rex-dead-score" id="offline-rex-dead-score">0</p>
+          <div class="offline-rex-stats-row">
+            <div class="offline-rex-stat">
+              <span class="offline-rex-stat-label">Distance</span>
+              <span class="offline-rex-stat-value" id="offline-rex-dead-dist">0</span>
+            </div>
+            <div class="offline-rex-stat">
+              <span class="offline-rex-stat-label">Best</span>
+              <span class="offline-rex-stat-value" id="offline-rex-dead-best">0</span>
+            </div>
+          </div>
+          <button type="button" class="mg-cta" id="offline-rex-retry">Try again</button>
         </div>
       </div>
     `;
@@ -112,12 +140,28 @@ export class OfflineRexGame {
     this.root.querySelector('[data-action="hub"]')?.addEventListener('click', () => {
       this.onExitToHub?.();
     });
+    this.root.querySelector('#offline-rex-start')?.addEventListener('click', () => {
+      this.sfx.ensure();
+      this.startRun();
+    });
+    this.root.querySelector('#offline-rex-retry')?.addEventListener('click', () => {
+      this.sfx.ensure();
+      this.startRun();
+    });
 
     window.addEventListener('resize', this.boundResize);
     window.addEventListener('keydown', this.boundKey);
     this.canvas.addEventListener('pointerdown', this.boundPointer);
 
     this.resize();
+  }
+
+  async boot(): Promise<void> {
+    await runGameBoot(this.root, {
+      title: 'OFFLINE REX',
+      subtitle: 'Loading run systems…',
+      minMs: 900,
+    });
     this.running = true;
     this.lastTs = performance.now();
     this.raf = requestAnimationFrame((t) => this.loop(t));
@@ -134,6 +178,7 @@ export class OfflineRexGame {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.groundY = h - Math.max(56, h * 0.14);
     this.dinoY = this.groundY - this.dinoStandH;
+    this.dinoX = Math.max(56, w * 0.12);
   }
 
   private onKey(e: KeyboardEvent): void {
@@ -154,12 +199,14 @@ export class OfflineRexGame {
 
   private onTap(): void {
     if (this.paused) return;
+    this.sfx.ensure();
     if (this.phase === 'intro' || this.phase === 'dead') {
       this.startRun();
       return;
     }
     if (this.phase === 'playing' && this.isGrounded()) {
       this.dinoVy = this.jumpForce;
+      this.sfx.jump();
     }
   }
 
@@ -168,35 +215,73 @@ export class OfflineRexGame {
   }
 
   private startRun(): void {
+    this.scoreCancel?.();
+    this.scoreCancel = null;
     this.phase = 'playing';
     this.score = 0;
+    this.scoreAnim.snap(0);
+    this.lastScoreMilestone = 0;
     this.speed = 6;
     this.obstacles = [];
     this.dust = [];
     this.spawnTimer = 0;
-    this.deathFlash = 0;
+    this.feel.reset();
     this.dinoY = this.groundY - this.dinoStandH;
     this.dinoVy = 0;
     this.ducking = false;
-    this.root.querySelector('#offline-rex-overlay')?.classList.add('hidden');
+    this.wasGrounded = true;
+    this.root.querySelector('#offline-rex-overlay')?.classList.add('mg-overlay-hidden');
+    this.updateScoreDisplay(true);
+    this.sfx.start();
     window.addEventListener('keyup', this.onKeyUp);
   }
 
   private gameOver(): void {
     this.phase = 'dead';
-    this.deathFlash = 1;
-    if (this.score > this.hiScore) {
+    const isRecord = this.score > this.hiScore;
+    if (isRecord) {
       this.hiScore = this.score;
       localStorage.setItem('offline-rex-hi', String(this.hiScore));
       const hiEl = this.root.querySelector('.offline-rex-hi');
-      if (hiEl) hiEl.textContent = String(this.hiScore).padStart(5, '0');
+      if (hiEl) hiEl.textContent = this.hiScore.toLocaleString();
+      this.sfx.record();
+    } else {
+      this.sfx.death();
     }
-    const msg = this.root.querySelector('#offline-rex-msg');
-    const cta = this.root.querySelector('#offline-rex-cta');
-    if (msg) msg.textContent = `Sync lost at ${this.score} points`;
-    if (cta) cta.textContent = 'TAP TO RETRY';
-    this.root.querySelector('#offline-rex-overlay')?.classList.remove('hidden');
+
+    this.feel.bumpShake(14);
+    this.feel.bumpFlash('#e8367a', 0.45);
+    this.feel.spawnBurst(this.dinoX + 20, this.dinoY + 24, '#e8367a', 16, 6);
+
+    this.root.querySelector('#offline-rex-panel-intro')?.classList.add('hidden');
+    this.root.querySelector('#offline-rex-panel-dead')?.classList.remove('hidden');
+    this.root.querySelector('#offline-rex-overlay')?.classList.remove('mg-overlay-hidden');
+    this.root.querySelector('#offline-rex-record')?.classList.toggle('hidden', !isRecord);
+
+    const deadScore = this.root.querySelector('#offline-rex-dead-score') as HTMLElement | null;
+    const deadDist = this.root.querySelector('#offline-rex-dead-dist');
+    const deadBest = this.root.querySelector('#offline-rex-dead-best');
+    if (deadDist) deadDist.textContent = this.score.toLocaleString();
+    if (deadBest) deadBest.textContent = this.hiScore.toLocaleString();
+    if (deadScore) {
+      this.scoreCancel = animateScoreElement(deadScore, this.score);
+      deadScore.classList.toggle('is-record', isRecord);
+    }
+
     window.removeEventListener('keyup', this.onKeyUp);
+  }
+
+  private updateScoreDisplay(snap = false): void {
+    const scoreEl = this.root.querySelector('#offline-rex-score');
+    if (scoreEl) scoreEl.textContent = snap ? '0' : this.scoreAnim.formatted();
+  }
+
+  private bumpScorePill(): void {
+    const pill = this.root.querySelector('#offline-rex-score-pill');
+    if (!pill) return;
+    pill.classList.remove('mg-hud-pill-bump');
+    void (pill as HTMLElement).offsetWidth;
+    pill.classList.add('mg-hud-pill-bump');
   }
 
   pause(): void {
@@ -206,6 +291,10 @@ export class OfflineRexGame {
   resume(): void {
     this.paused = false;
     this.lastTs = performance.now();
+  }
+
+  setMuted(muted: boolean): void {
+    this.sfx.setMuted(muted);
   }
 
   private loop(ts: number): void {
@@ -221,7 +310,9 @@ export class OfflineRexGame {
 
   private update(step: number): void {
     this.pulse += step * 0.08;
-    if (this.deathFlash > 0) this.deathFlash = Math.max(0, this.deathFlash - step * 0.06);
+    const shake = this.feel.tick(step);
+    this.shakeX = shake.shakeX;
+    this.shakeY = shake.shakeY;
 
     if (this.phase !== 'playing') {
       this.animFrame += step * 0.12;
@@ -234,19 +325,30 @@ export class OfflineRexGame {
     this.groundOffset = (this.groundOffset + this.speed * step) % 48;
     this.bgOffset += this.speed * step * 0.35;
     this.score += Math.floor(step * this.speed * 0.35);
-    const scoreEl = this.root.querySelector('#offline-rex-score');
-    if (scoreEl) scoreEl.textContent = String(this.score).padStart(5, '0');
+    this.scoreAnim.set(this.score);
+    this.scoreAnim.tick(step);
+    this.updateScoreDisplay();
+
+    const milestone = Math.floor(this.score / 500);
+    if (milestone > this.lastScoreMilestone) {
+      this.lastScoreMilestone = milestone;
+      this.sfx.scoreTick();
+      this.bumpScorePill();
+    }
 
     this.dinoVy += this.gravity * step;
     this.dinoY += this.dinoVy * step;
     const standTop = this.groundY - (this.ducking ? this.dinoDuckH : this.dinoStandH);
+    const grounded = this.dinoY >= standTop - 0.5;
     if (this.dinoY > standTop) {
       this.dinoY = standTop;
+      if (!this.wasGrounded && this.dinoVy > 2) this.sfx.land();
       this.dinoVy = 0;
       if (Math.floor(this.animFrame) % 4 === 0) {
         this.dust.push(spawnDust(this.dinoX + 8, this.groundY - 4));
       }
     }
+    this.wasGrounded = grounded;
 
     for (const p of this.dust) {
       p.x += p.vx * step;
@@ -321,6 +423,9 @@ export class OfflineRexGame {
     const h = this.canvas.clientHeight;
     const ctx = this.ctx;
 
+    ctx.save();
+    ctx.translate(this.shakeX, this.shakeY);
+
     drawParallaxBg(ctx, w, h, this.groundY, this.groundOffset, this.bgOffset);
     drawSpeedLines(ctx, w, this.groundY, this.speed, this.groundOffset);
     drawGround(ctx, w, h, this.groundY, this.groundOffset);
@@ -339,14 +444,28 @@ export class OfflineRexGame {
 
     drawVignette(ctx, w, h);
 
-    if (this.deathFlash > 0) {
-      ctx.fillStyle = `rgba(255, 0, 110, ${this.deathFlash * 0.4})`;
+    if (this.feel.flash > 0) {
+      ctx.fillStyle = this.feel.flashColor;
+      ctx.globalAlpha = this.feel.flash * 0.35;
       ctx.fillRect(0, 0, w, h);
+      ctx.globalAlpha = 1;
     }
+
+    for (const p of this.feel.particles) {
+      ctx.globalAlpha = p.life * 0.7;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
   }
 
   destroy(): void {
     this.running = false;
+    this.scoreCancel?.();
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.boundResize);
     window.removeEventListener('keydown', this.boundKey);
@@ -371,13 +490,14 @@ class OfflineRexHandle implements GameHandle {
     this.game.resume();
   }
 
-  handlePlayablesAudio(): void {
-    // No audio
+  handlePlayablesAudio(enabled: boolean): void {
+    this.game.setMuted(!enabled);
   }
 }
 
 export async function launch(container: HTMLElement, options?: GameLaunchOptions): Promise<GameHandle> {
   const game = new OfflineRexGame(container, options);
+  await game.boot();
   return new OfflineRexHandle(game);
 }
 
